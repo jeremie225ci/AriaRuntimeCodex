@@ -337,6 +337,22 @@ enum SmokeRunner {
         try require(toolNames.contains("computer_action"), "MCP tools/list includes computer_action")
         pass("MCP tools/list returned \(toolNames.count) tools")
 
+        let blockedBeforeBootstrap = try client.request(
+            method: "tools/call",
+            params: .object([
+                "name": .string("computer_action"),
+                "arguments": .object([
+                    "action": .object([
+                        "type": .string("wait"),
+                        "seconds": .number(0.1),
+                    ]),
+                ]),
+            ])
+        )
+        let blockedBeforeBootstrapStructured = try requireToolError(blockedBeforeBootstrap, context: "tools/call computer_action before bootstrap")
+        try require(blockedBeforeBootstrapStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "computer_action before bootstrap is rejected by Aria policy")
+        pass("MCP policy blocks computer_action before aria_bootstrap")
+
         let healthCall = try client.request(
             method: "tools/call",
             params: .object([
@@ -367,7 +383,24 @@ enum SmokeRunner {
         )
         let bootstrapStructured = try requireStructuredContent(bootstrapCall, context: "tools/call aria_bootstrap")
         try require((bootstrapStructured["canonical_visual_tools"]?.arrayValue ?? []).contains(.string("computer_snapshot")), "aria_bootstrap returned canonical visual tools")
+        try require(bootstrapStructured["session"]?["bootstrap_count"]?.intValue == 1, "aria_bootstrap returned session state")
         pass("MCP aria_bootstrap tool call succeeded")
+
+        let blockedBeforeSnapshot = try client.request(
+            method: "tools/call",
+            params: .object([
+                "name": .string("computer_action"),
+                "arguments": .object([
+                    "action": .object([
+                        "type": .string("wait"),
+                        "seconds": .number(0.1),
+                    ]),
+                ]),
+            ])
+        )
+        let blockedBeforeSnapshotStructured = try requireToolError(blockedBeforeSnapshot, context: "tools/call computer_action before snapshot")
+        try require(blockedBeforeSnapshotStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "computer_action before first snapshot is rejected by Aria policy")
+        pass("MCP policy blocks computer_action before the first snapshot")
 
         if permissionsStructured["screen_recording_trusted"]?.boolValue == true {
             let screenshotCall = try client.request(
@@ -382,6 +415,7 @@ enum SmokeRunner {
             let height = screenshotStructured["height"]?.intValue ?? 0
             let imageBase64 = screenshotStructured["image_base64"]?.stringValue ?? ""
             try require(width > 0 && height > 0 && !imageBase64.isEmpty, "computer_snapshot via MCP returned image data")
+            try require(screenshotStructured["session"]?["snapshot_count"]?.intValue == 1, "computer_snapshot returned updated session state")
             pass("MCP computer_snapshot returned \(width)x\(height)")
         } else {
             skip("MCP computer_snapshot skipped because Screen Recording permission is not granted")
@@ -458,6 +492,22 @@ enum SmokeRunner {
         try require(toolNames.contains("computer_snapshot"), "JSONL tools/list includes computer_snapshot")
         pass("JSONL tools/list returned \(toolNames.count) tools")
 
+        let blockedBeforeBootstrap = try client.request(
+            method: "tools/call",
+            params: .object([
+                "name": .string("computer_action"),
+                "arguments": .object([
+                    "action": .object([
+                        "type": .string("wait"),
+                        "seconds": .number(0.1),
+                    ]),
+                ]),
+            ])
+        )
+        let blockedStructured = try requireToolError(blockedBeforeBootstrap, context: "jsonl tools/call computer_action before bootstrap")
+        try require(blockedStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "JSONL computer_action before bootstrap is rejected by Aria policy")
+        pass("JSONL policy blocks computer_action before aria_bootstrap")
+
         let healthCall = try client.request(
             method: "tools/call",
             params: .object([
@@ -483,6 +533,17 @@ enum SmokeRunner {
         if result["isError"]?.boolValue == true {
             let payload = result["structuredContent"].map(renderJSON) ?? "{}"
             throw SmokeFailure(description: "\(context) returned an MCP tool error: \(payload)")
+        }
+        guard let structured = result["structuredContent"]?.objectValue else {
+            throw SmokeFailure(description: "\(context) did not return structuredContent")
+        }
+        return structured
+    }
+
+    private static func requireToolError(_ response: MCPJSONRPCResponse, context: String) throws -> [String: JSONValue] {
+        let result = try requireObject(response.result, context: context)
+        guard result["isError"]?.boolValue == true else {
+            throw SmokeFailure(description: "\(context) was expected to fail with an MCP tool error")
         }
         guard let structured = result["structuredContent"]?.objectValue else {
             throw SmokeFailure(description: "\(context) did not return structuredContent")

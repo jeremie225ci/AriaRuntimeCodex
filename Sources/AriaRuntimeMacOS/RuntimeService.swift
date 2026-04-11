@@ -24,11 +24,17 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             ToolDescriptor(
                 name: "aria_bootstrap",
                 description: "Call exactly once at the start of each visual/UI task. Returns Aria's mandatory operating rules for Codex.",
-                inputSchema: .object([:])
+                inputSchema: .object([
+                    "type": .string("object"),
+                    "properties": .object([
+                        "task": .object(["type": .string("string")]),
+                    ]),
+                    "additionalProperties": .bool(false),
+                ])
             ),
             ToolDescriptor(
                 name: "computer_snapshot",
-                description: "Capture the current screen and return the image plus Aria loop guidance. Use before the first UI action and after app/site entry.",
+                description: "Capture the current screen and return the image plus Aria loop guidance. Requires aria_bootstrap first. Use before the first UI action and after app/site entry.",
                 inputSchema: .object([
                     "type": .string("object"),
                     "properties": .object([
@@ -39,7 +45,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             ),
             ToolDescriptor(
                 name: "computer_action",
-                description: "The canonical Aria UI tool. Execute exactly one UI action and receive the post-action screenshot to inspect before the next action.",
+                description: "The canonical Aria UI tool. Execute exactly one UI action and receive the post-action screenshot to inspect before the next action. Requires aria_bootstrap and a fresh computer_snapshot first.",
                 inputSchema: .object([
                     "type": .string("object"),
                     "properties": .object([
@@ -82,7 +88,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             ),
             ToolDescriptor(
                 name: "system_open_application",
-                description: "Launch an application by name, bundle identifier, or full path. After opening, call computer_snapshot before acting visually.",
+                description: "Launch an application by name, bundle identifier, or full path. Requires aria_bootstrap first. After opening, call computer_snapshot before acting visually.",
                 inputSchema: .object([
                     "type": .string("object"),
                     "properties": .object([
@@ -94,7 +100,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             ),
             ToolDescriptor(
                 name: "system_open_url",
-                description: "Open a URL using the user's default browser. After navigation, call computer_snapshot before any visual interaction.",
+                description: "Open a URL using the user's default browser. Requires aria_bootstrap first. After navigation, call computer_snapshot before any visual interaction.",
                 inputSchema: .object([
                     "type": .string("object"),
                     "properties": .object([

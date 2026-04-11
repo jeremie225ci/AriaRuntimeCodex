@@ -22,12 +22,59 @@ private enum MCPFrameEncoding {
     case jsonLines
 }
 
+private final class AriaSessionState {
+    private(set) var bootstrapCount = 0
+    private(set) var snapshotCount = 0
+    private(set) var actionCount = 0
+    private(set) var activeTask = ""
+    private(set) var lastTool = ""
+    private(set) var screenObservationReady = false
+
+    func registerBootstrap(task: String?) {
+        bootstrapCount += 1
+        snapshotCount = 0
+        actionCount = 0
+        screenObservationReady = false
+        activeTask = task?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        lastTool = "aria_bootstrap"
+    }
+
+    func markNavigation(tool: String) {
+        screenObservationReady = false
+        lastTool = tool
+    }
+
+    func markSnapshot() {
+        snapshotCount += 1
+        screenObservationReady = true
+        lastTool = "computer_snapshot"
+    }
+
+    func markAction() {
+        actionCount += 1
+        screenObservationReady = true
+        lastTool = "computer_action"
+    }
+
+    func statusPayload() -> JSONValue {
+        .object([
+            "bootstrap_count": .number(Double(bootstrapCount)),
+            "snapshot_count": .number(Double(snapshotCount)),
+            "action_count": .number(Double(actionCount)),
+            "active_task": .string(activeTask),
+            "last_tool": .string(lastTool),
+            "screen_observation_ready": .bool(screenObservationReady),
+        ])
+    }
+}
+
 final class MCPServer {
     private let service = MacOSRuntimeService()
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder.runtimeEncoder()
     private let delimiters = [Data("\r\n\r\n".utf8), Data("\n\n".utf8)]
     private var inputBuffer = Data()
+    private let sessionState = AriaSessionState()
     private let traceEnabled = ProcessInfo.processInfo.environment["ARIA_MCP_TRACE"] == "1"
 
     func run() throws {
@@ -158,6 +205,25 @@ final class MCPServer {
                 return jsonRPCError(id: requestID, code: -32602, message: "Missing tool name")
             }
             let arguments = params["arguments"]?.objectValue ?? [:]
+            if let violation = policyViolation(toolName: toolName, arguments: arguments) {
+                let payload: JSONValue = .object([
+                    "error": .object([
+                        "code": .string("aria_policy_violation"),
+                        "message": .string(violation),
+                    ]),
+                    "session": sessionState.statusPayload(),
+                ])
+                return JSONRPCResponse(
+                    jsonrpc: "2.0",
+                    id: requestID,
+                    result: .object([
+                        "content": .array(buildToolContent(payload)),
+                        "isError": .bool(true),
+                        "structuredContent": payload,
+                    ]),
+                    error: nil
+                )
+            }
             let runtimeResponse = service.handle(
                 RuntimeRequest(
                     method: .invoke,
@@ -170,7 +236,11 @@ final class MCPServer {
 
             let structuredContent: JSONValue
             if runtimeResponse.ok {
-                structuredContent = runtimeResponse.result ?? .object([:])
+                structuredContent = augmentSuccessfulResult(
+                    toolName: toolName,
+                    arguments: arguments,
+                    result: runtimeResponse.result ?? .object([:])
+                )
             } else {
                 structuredContent = .object([
                     "error": .object([
@@ -217,6 +287,62 @@ final class MCPServer {
         } catch {
             return #"{"error":"encoding_failed"}"#
         }
+    }
+
+    private func policyViolation(toolName: String, arguments: [String: JSONValue]) -> String? {
+        switch toolName {
+        case "aria_bootstrap", "runtime_health", "runtime_permissions":
+            return nil
+        case "system_open_application", "system_open_url":
+            guard sessionState.bootstrapCount > 0 else {
+                return "Call aria_bootstrap before using navigation tools so Codex enters the Aria control loop."
+            }
+            return nil
+        case "computer_snapshot":
+            guard sessionState.bootstrapCount > 0 else {
+                return "Call aria_bootstrap before the first computer_snapshot."
+            }
+            return nil
+        case "computer_action":
+            guard sessionState.bootstrapCount > 0 else {
+                return "Call aria_bootstrap before the first computer_action."
+            }
+            guard sessionState.screenObservationReady else {
+                return "Call computer_snapshot after aria_bootstrap and after every navigation step before computer_action."
+            }
+            guard arguments["action"]?.objectValue != nil else {
+                return nil
+            }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    private func augmentSuccessfulResult(toolName: String, arguments: [String: JSONValue], result: JSONValue) -> JSONValue {
+        switch toolName {
+        case "aria_bootstrap":
+            sessionState.registerBootstrap(task: arguments["task"]?.stringValue)
+        case "system_open_application", "system_open_url":
+            sessionState.markNavigation(tool: toolName)
+        case "computer_snapshot":
+            sessionState.markSnapshot()
+        case "computer_action":
+            sessionState.markAction()
+        default:
+            break
+        }
+
+        guard var object = result.objectValue else {
+            return result
+        }
+        object["session"] = sessionState.statusPayload()
+        if toolName == "aria_bootstrap" {
+            object["next_required_tool"] = .string("computer_snapshot")
+        } else if toolName == "system_open_application" || toolName == "system_open_url" {
+            object["next_required_tool"] = .string("computer_snapshot")
+        }
+        return .object(object)
     }
 
     private func resourceList() -> [JSONValue] {
