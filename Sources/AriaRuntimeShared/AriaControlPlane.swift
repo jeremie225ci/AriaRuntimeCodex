@@ -13,6 +13,7 @@ public enum AriaControlPlane {
         "Capture the screen with computer_snapshot before the first UI action.",
         "Execute exactly one UI action per computer_action call.",
         "Inspect the returned screenshot after every action before choosing the next action.",
+        "Treat scroll and drag as successful only when the returned screenshot confirms a visual change.",
         "Verify completion visually before claiming success.",
     ]
 

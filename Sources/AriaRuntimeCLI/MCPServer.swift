@@ -249,13 +249,14 @@ final class MCPServer {
                     ]),
                 ])
             }
+            let toolError = shouldMarkToolError(toolName: toolName, runtimeResponseOK: runtimeResponse.ok, structuredContent: structuredContent)
 
             return JSONRPCResponse(
                 jsonrpc: "2.0",
                 id: requestID,
                 result: .object([
                     "content": .array(buildToolContent(structuredContent)),
-                    "isError": .bool(!runtimeResponse.ok),
+                    "isError": .bool(toolError),
                     "structuredContent": structuredContent,
                 ]),
                 error: nil
@@ -287,6 +288,16 @@ final class MCPServer {
         } catch {
             return #"{"error":"encoding_failed"}"#
         }
+    }
+
+    private func shouldMarkToolError(toolName: String, runtimeResponseOK: Bool, structuredContent: JSONValue) -> Bool {
+        if !runtimeResponseOK {
+            return true
+        }
+        guard toolName == "computer_action", let object = structuredContent.objectValue else {
+            return false
+        }
+        return object["ok"]?.boolValue == false
     }
 
     private func policyViolation(toolName: String, arguments: [String: JSONValue]) -> String? {

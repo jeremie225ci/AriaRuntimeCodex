@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import AriaRuntimeMacOS
 import AriaRuntimeShared
 
 private struct SmokeFailure: Error, CustomStringConvertible {
@@ -268,37 +269,71 @@ enum SmokeRunner {
 
     private static func runRuntimeSmoke() throws {
         print("Aria Runtime smoke test")
-        let client = RuntimeClient()
+        let service = MacOSRuntimeService()
 
-        let health = try client.send(method: .health)
+        let health = service.handle(RuntimeRequest(method: .health))
         let healthResult = try requireRuntimeResult(health, context: "runtime.health")
         try require(healthResult["service"]?.stringValue == "aria-runtime", "runtime.health returned the expected service name")
         pass("runtime.health responded")
 
-        let permissions = try client.send(method: .permissions)
+        let permissions = service.handle(RuntimeRequest(method: .permissions))
         let permissionsResult = try requireRuntimeResult(permissions, context: "runtime.permissions")
         pass("runtime.permissions responded")
 
-        let tools = try client.send(method: .tools)
+        let tools = service.handle(RuntimeRequest(method: .tools))
         let toolResult = try requireRuntimeResult(tools, context: "runtime.tools")
         let toolCount = toolResult["tools"]?.arrayValue?.count ?? 0
         try require(toolCount >= 5, "runtime.tools returned at least five tools")
         pass("runtime.tools returned \(toolCount) tools")
 
-        let bootstrap = try client.invoke(tool: "aria_bootstrap")
+        let bootstrap = service.handle(
+            RuntimeRequest(
+                method: .invoke,
+                params: .object([
+                    "tool": .string("aria_bootstrap"),
+                    "arguments": .object([:]),
+                ])
+            )
+        )
         let bootstrapResult = try requireRuntimeResult(bootstrap, context: "aria_bootstrap")
         let canonicalTools = bootstrapResult["canonical_visual_tools"]?.arrayValue?.compactMap(\.stringValue) ?? []
         try require(canonicalTools.contains("computer_action"), "aria_bootstrap returned canonical visual tools")
         pass("aria_bootstrap returned Aria control instructions")
 
         if permissionsResult["screen_recording_trusted"]?.boolValue == true {
-            let screenshot = try client.invoke(tool: "computer_snapshot")
+            let screenshot = service.handle(
+                RuntimeRequest(
+                    method: .invoke,
+                    params: .object([
+                        "tool": .string("computer_snapshot"),
+                        "arguments": .object([:]),
+                    ])
+                )
+            )
             let screenshotResult = try requireRuntimeResult(screenshot, context: "computer_snapshot")
             let width = screenshotResult["width"]?.intValue ?? 0
             let height = screenshotResult["height"]?.intValue ?? 0
             let imageBase64 = screenshotResult["image_base64"]?.stringValue ?? ""
             try require(width > 0 && height > 0 && !imageBase64.isEmpty, "computer_snapshot returned image data")
             pass("computer_snapshot returned \(width)x\(height)")
+
+            let action = service.handle(
+                RuntimeRequest(
+                    method: .invoke,
+                    params: .object([
+                        "tool": .string("computer_action"),
+                        "arguments": .object([
+                            "action": .object([
+                                "type": .string("wait"),
+                                "seconds": .number(0.1),
+                            ]),
+                        ]),
+                    ])
+                )
+            )
+            let actionResult = try requireRuntimeResult(action, context: "computer_action")
+            try require(actionResult["visual_confirmation"]?.objectValue != nil, "computer_action returned visual verification metadata")
+            pass("computer_action returned visual verification metadata")
         } else {
             skip("computer_snapshot skipped because Screen Recording permission is not granted")
         }
@@ -417,6 +452,22 @@ enum SmokeRunner {
             try require(width > 0 && height > 0 && !imageBase64.isEmpty, "computer_snapshot via MCP returned image data")
             try require(screenshotStructured["session"]?["snapshot_count"]?.intValue == 1, "computer_snapshot returned updated session state")
             pass("MCP computer_snapshot returned \(width)x\(height)")
+
+            let waitActionCall = try client.request(
+                method: "tools/call",
+                params: .object([
+                    "name": .string("computer_action"),
+                    "arguments": .object([
+                        "action": .object([
+                            "type": .string("wait"),
+                            "seconds": .number(0.1),
+                        ]),
+                    ]),
+                ])
+            )
+            let waitActionStructured = try requireStructuredContent(waitActionCall, context: "tools/call computer_action wait")
+            try require(waitActionStructured["visual_confirmation"]?.objectValue != nil, "computer_action wait returned visual verification metadata")
+            pass("MCP computer_action returned visual verification metadata")
         } else {
             skip("MCP computer_snapshot skipped because Screen Recording permission is not granted")
         }

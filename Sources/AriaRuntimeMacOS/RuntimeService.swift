@@ -4,6 +4,37 @@ import CoreGraphics
 import Foundation
 import AriaRuntimeShared
 
+private struct CapturedScreen {
+    let image: CGImage
+    let pngData: Data
+}
+
+private struct VisualVerificationResult {
+    let actionType: String
+    let required: Bool
+    let changed: Bool
+    let confirmed: Bool
+    let changeRatio: Double
+    let averageDelta: Double
+    let thresholdRatio: Double
+    let thresholdDelta: Double
+    let reason: String
+
+    func payload() -> JSONValue {
+        .object([
+            "action_type": .string(actionType),
+            "required": .bool(required),
+            "changed": .bool(changed),
+            "confirmed": .bool(confirmed),
+            "change_ratio": .number(changeRatio),
+            "average_delta": .number(averageDelta),
+            "threshold_ratio": .number(thresholdRatio),
+            "threshold_delta": .number(thresholdDelta),
+            "reason": .string(reason),
+        ])
+    }
+}
+
 public final class MacOSRuntimeService: @unchecked Sendable {
     public let version = "1.0.0"
 
@@ -196,7 +227,8 @@ public final class MacOSRuntimeService: @unchecked Sendable {
     }
 
     private func computerSnapshot(goal: String?) throws -> JSONValue {
-        var payload = try captureScreenshot().objectValue ?? [:]
+        let frame = try captureScreen()
+        var payload = screenshotPayload(from: frame)
         payload["mode"] = .string("computer_snapshot")
         payload["windows"] = listWindows()["windows"] ?? .array([])
         payload["visual_loop_rules"] = .array(AriaControlPlane.visualLoopRules.map(JSONValue.string))
@@ -211,12 +243,33 @@ public final class MacOSRuntimeService: @unchecked Sendable {
 
     private func computerAction(arguments: [String: JSONValue]) throws -> JSONValue {
         let action = try requiredObject(arguments, key: "action")
+        let actionType = try requiredString(action, key: "type")
+        let beforeFrame = try captureScreen()
         let executedAction = try executeComputerAction(action)
-        var payload = try computerSnapshot(goal: arguments["goal"]?.stringValue).objectValue ?? [:]
+        settleAfterAction(actionType)
+        let afterFrame = try captureScreen()
+        let verification = try verifyVisualOutcome(
+            actionType: actionType,
+            before: beforeFrame.image,
+            after: afterFrame.image
+        )
+        var payload = screenshotPayload(from: afterFrame)
         payload["mode"] = .string("computer_action")
-        payload["ok"] = .bool(true)
+        payload["ok"] = .bool(verification.confirmed || !verification.required)
         payload["executed_action"] = .object(executedAction)
-        payload["next_step"] = .string("Inspect this returned screenshot before choosing the next action.")
+        payload["visual_confirmation"] = verification.payload()
+        if let goal = arguments["goal"]?.stringValue, !goal.isEmpty {
+            payload["goal"] = .string(goal)
+        }
+        if verification.required && !verification.confirmed {
+            payload["error"] = .object([
+                "code": .string("visual_confirmation_failed"),
+                "message": .string(verification.reason),
+            ])
+            payload["next_step"] = .string("The expected visual change was not confirmed. Inspect the screenshot and choose a different action.")
+        } else {
+            payload["next_step"] = .string("Inspect this returned screenshot before choosing the next action.")
+        }
         return .object(payload)
     }
 
@@ -322,19 +375,32 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         guard screenRecordingTrusted() else {
             throw RuntimeProtocolError.runtimeFailure("Screen Recording permission is required for screenshots.")
         }
-        guard let image = CGDisplayCreateImage(CGMainDisplayID()) else {
-            throw RuntimeProtocolError.runtimeFailure("Unable to capture the main display.")
+        return .object(screenshotPayload(from: try captureScreen()))
+    }
+
+    private func captureScreen() throws -> CapturedScreen {
+        guard screenRecordingTrusted() else {
+            throw RuntimeProtocolError.runtimeFailure("Screen Recording permission is required for screenshots.")
         }
-        let representation = NSBitmapImageRep(cgImage: image)
-        guard let data = representation.representation(using: .png, properties: [:]) else {
-            throw RuntimeProtocolError.runtimeFailure("Unable to encode screenshot as PNG.")
+        return try runOnMain {
+            guard let image = CGDisplayCreateImage(CGMainDisplayID()) else {
+                throw RuntimeProtocolError.runtimeFailure("Unable to capture the main display.")
+            }
+            let representation = NSBitmapImageRep(cgImage: image)
+            guard let data = representation.representation(using: .png, properties: [:]) else {
+                throw RuntimeProtocolError.runtimeFailure("Unable to encode screenshot as PNG.")
+            }
+            return CapturedScreen(image: image, pngData: data)
         }
-        return .object([
+    }
+
+    private func screenshotPayload(from frame: CapturedScreen) -> [String: JSONValue] {
+        [
             "mime": .string("image/png"),
-            "width": .number(Double(image.width)),
-            "height": .number(Double(image.height)),
-            "image_base64": .string(data.base64EncodedString()),
-        ])
+            "width": .number(Double(frame.image.width)),
+            "height": .number(Double(frame.image.height)),
+            "image_base64": .string(frame.pngData.base64EncodedString()),
+        ]
     }
 
     private func executeComputerAction(_ action: [String: JSONValue]) throws -> [String: JSONValue] {
@@ -366,6 +432,10 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             let deltaX = action["delta_x"]?.doubleValue ?? 0
             let deltaY = action["delta_y"]?.doubleValue ?? 0
             try ensureAccessibility()
+            if let x = action["x"]?.doubleValue, let y = action["y"]?.doubleValue {
+                try moveMouse(to: CGPoint(x: x, y: y))
+                usleep(60_000)
+            }
             try scroll(deltaX: Int32(deltaX.rounded()), deltaY: Int32(deltaY.rounded()))
             return [
                 "type": .string(actionType),
@@ -436,6 +506,121 @@ public final class MacOSRuntimeService: @unchecked Sendable {
                 "Unsupported computer_action type: \(actionType). Allowed types: \(AriaControlPlane.allowedComputerActionTypes.joined(separator: ", "))"
             )
         }
+    }
+
+    private func settleAfterAction(_ actionType: String) {
+        let microseconds: useconds_t
+        switch actionType {
+        case "scroll", "drag":
+            microseconds = 220_000
+        case "click", "double_click", "type", "key_press":
+            microseconds = 160_000
+        case "move":
+            microseconds = 80_000
+        case "wait":
+            microseconds = 0
+        default:
+            microseconds = 120_000
+        }
+        if microseconds > 0 {
+            usleep(microseconds)
+        }
+    }
+
+    private func verifyVisualOutcome(actionType: String, before: CGImage, after: CGImage) throws -> VisualVerificationResult {
+        let requirement = verificationRequirement(for: actionType)
+        if !requirement.required {
+            return VisualVerificationResult(
+                actionType: actionType,
+                required: false,
+                changed: false,
+                confirmed: true,
+                changeRatio: 0,
+                averageDelta: 0,
+                thresholdRatio: requirement.thresholdRatio,
+                thresholdDelta: requirement.thresholdDelta,
+                reason: "No visible change is required for \(actionType).",
+            )
+        }
+
+        let metrics = try compareScreens(before: before, after: after)
+        let changed = metrics.changeRatio >= requirement.thresholdRatio || metrics.averageDelta >= requirement.thresholdDelta
+        let reason = changed
+            ? "Visible screen change confirmed after \(actionType)."
+            : "No meaningful visible screen change was detected after \(actionType)."
+        return VisualVerificationResult(
+            actionType: actionType,
+            required: true,
+            changed: changed,
+            confirmed: changed,
+            changeRatio: metrics.changeRatio,
+            averageDelta: metrics.averageDelta,
+            thresholdRatio: requirement.thresholdRatio,
+            thresholdDelta: requirement.thresholdDelta,
+            reason: reason,
+        )
+    }
+
+    private func verificationRequirement(for actionType: String) -> (required: Bool, thresholdRatio: Double, thresholdDelta: Double) {
+        switch actionType {
+        case "scroll", "drag":
+            return (true, 0.012, 0.008)
+        default:
+            return (false, 0.0, 0.0)
+        }
+    }
+
+    private func compareScreens(before: CGImage, after: CGImage) throws -> (changeRatio: Double, averageDelta: Double) {
+        let sampleWidth = 96
+        let sampleHeight = 96
+        let beforeBuffer = try normalizedPixelBuffer(from: before, width: sampleWidth, height: sampleHeight)
+        let afterBuffer = try normalizedPixelBuffer(from: after, width: sampleWidth, height: sampleHeight)
+        guard beforeBuffer.count == afterBuffer.count else {
+            throw RuntimeProtocolError.runtimeFailure("Unable to compare screen buffers of different sizes.")
+        }
+
+        var changedPixels = 0
+        var totalDelta = 0.0
+        let pixelCount = sampleWidth * sampleHeight
+        for index in stride(from: 0, to: beforeBuffer.count, by: 4) {
+            let redDelta = abs(Int(beforeBuffer[index]) - Int(afterBuffer[index]))
+            let greenDelta = abs(Int(beforeBuffer[index + 1]) - Int(afterBuffer[index + 1]))
+            let blueDelta = abs(Int(beforeBuffer[index + 2]) - Int(afterBuffer[index + 2]))
+            let normalizedDelta = Double(redDelta + greenDelta + blueDelta) / (255.0 * 3.0)
+            totalDelta += normalizedDelta
+            if normalizedDelta >= 0.08 {
+                changedPixels += 1
+            }
+        }
+        return (
+            changeRatio: Double(changedPixels) / Double(pixelCount),
+            averageDelta: totalDelta / Double(pixelCount)
+        )
+    }
+
+    private func normalizedPixelBuffer(from image: CGImage, width: Int, height: Int) throws -> [UInt8] {
+        let bytesPerRow = width * 4
+        var buffer = [UInt8](repeating: 0, count: bytesPerRow * height)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+        let contextCreated = buffer.withUnsafeMutableBytes { rawBuffer -> CGContext? in
+            guard let baseAddress = rawBuffer.baseAddress else { return nil }
+            return CGContext(
+                data: baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo
+            )
+        }
+        guard let context = contextCreated else {
+            throw RuntimeProtocolError.runtimeFailure("Unable to create normalized screen comparison context.")
+        }
+        context.interpolationQuality = .low
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return buffer
     }
 
     private func click(at point: CGPoint, button: String, clickCount: Int) throws {
