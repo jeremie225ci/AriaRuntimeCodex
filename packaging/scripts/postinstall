@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_BIN="/Applications/Aria Runtime.app/Contents/MacOS/aria"
+USR_LOCAL_BIN="/usr/local/bin"
+TARGET_LINK="${USR_LOCAL_BIN}/aria"
+
+mkdir -p "${USR_LOCAL_BIN}"
+ln -sf "${APP_BIN}" "${TARGET_LINK}"
+
+exit 0

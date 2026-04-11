@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DIST_DIR="${ROOT_DIR}/dist"
+SOURCE_APP="${DIST_DIR}/Aria Runtime.app"
+
+INSTALL_DIR="${ARIA_RUNTIME_INSTALL_DIR:-$HOME/Applications}"
+TARGET_APP="${INSTALL_DIR}/Aria Runtime.app"
+LOCAL_BIN_DIR="${ARIA_RUNTIME_BIN_DIR:-$HOME/.local/bin}"
+CLI_LINK="${LOCAL_BIN_DIR}/aria"
+PERMISSION_WAIT_SECONDS="${ARIA_RUNTIME_PERMISSION_WAIT_SECONDS:-45}"
+REBUILD="${ARIA_RUNTIME_REBUILD:-auto}"
+
+if [[ "${REBUILD}" == "1" || "${REBUILD}" == "true" || ! -d "${SOURCE_APP}" ]]; then
+  "${ROOT_DIR}/scripts/build_app_bundle.sh"
+else
+  echo "Using existing app bundle: ${SOURCE_APP}"
+  echo "Set ARIA_RUNTIME_REBUILD=1 to rebuild before installing."
+fi
+
+mkdir -p "${INSTALL_DIR}"
+mkdir -p "${LOCAL_BIN_DIR}"
+
+STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/aria-runtime-install.XXXXXX")"
+STAGING_APP="${STAGING_DIR}/Aria Runtime.app"
+ditto "${SOURCE_APP}" "${STAGING_APP}"
+
+if [[ -e "${TARGET_APP}" ]]; then
+  BACKUP_PATH="${TARGET_APP}.backup-$(date +%Y%m%d%H%M%S)"
+  mv "${TARGET_APP}" "${BACKUP_PATH}"
+  echo "Previous install moved to: ${BACKUP_PATH}"
+fi
+
+mv "${STAGING_APP}" "${TARGET_APP}"
+rmdir "${STAGING_DIR}" 2>/dev/null || true
+
+BUNDLE_ARIA="${TARGET_APP}/Contents/MacOS/aria"
+chmod +x "${TARGET_APP}/Contents/MacOS/AriaRuntimeApp" "${BUNDLE_ARIA}" "${TARGET_APP}/Contents/MacOS/aria-runtime-daemon"
+ln -sfn "${BUNDLE_ARIA}" "${CLI_LINK}"
+
+open "${TARGET_APP}" >/dev/null 2>&1 || true
+"${BUNDLE_ARIA}" daemon install-agent
+"${BUNDLE_ARIA}" daemon install-agent >/dev/null 2>&1 || true
+
+for _ in $(seq 1 20); do
+  if "${BUNDLE_ARIA}" health >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+"${BUNDLE_ARIA}" permissions request >/dev/null 2>&1 || true
+
+PERMISSIONS_READY=0
+for _ in $(seq 1 "${PERMISSION_WAIT_SECONDS}"); do
+  HEALTH_OUTPUT="$("${BUNDLE_ARIA}" health 2>/dev/null || true)"
+  if [[ "${HEALTH_OUTPUT}" == *'"accessibility_trusted" : true'* ]] && [[ "${HEALTH_OUTPUT}" == *'"screen_recording_trusted" : true'* ]]; then
+    PERMISSIONS_READY=1
+    break
+  fi
+  sleep 1
+done
+
+"${BUNDLE_ARIA}" daemon install-agent >/dev/null 2>&1 || true
+
+if command -v codex >/dev/null 2>&1; then
+  "${BUNDLE_ARIA}" codex install
+else
+  echo "Codex CLI not found; skipped Codex MCP registration."
+fi
+
+echo ""
+echo "Aria Runtime installed locally."
+echo "App: ${TARGET_APP}"
+echo "CLI: ${CLI_LINK}"
+if [[ "${PERMISSIONS_READY}" == "1" ]]; then
+  echo "Permissions: ready"
+else
+  echo "Permissions: pending approval in macOS prompts/settings"
+fi
+echo ""
+echo "Next:"
+echo "  codex"
+echo "  ask Codex to use Aria for a visual task"
+echo "  Aria will expose bootstrap rules, prompts, and the canonical computer-use loop automatically"
