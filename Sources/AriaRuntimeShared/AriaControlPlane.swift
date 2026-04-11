@@ -152,4 +152,10 @@ public enum AriaControlPlane {
         - Stop before irreversible actions unless the user explicitly asked for that exact action.
         """
     }
+
+    public static func setupTestPrompt() -> String {
+        """
+        Use aria-runtime for this visual task. Call aria_bootstrap exactly once, then if needed open TextEdit, call computer_snapshot, and use computer_action one step at a time to create a new document and type: Aria Runtime Codex setup test.
+        """
+    }
 }

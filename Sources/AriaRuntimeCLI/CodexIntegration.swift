@@ -39,14 +39,19 @@ enum CodexIntegration {
     }
 
     private static func status(executablePath: String) throws {
+        let payload = statusPayload(executablePath: executablePath)
+        let data = try JSONEncoder.runtimeEncoder(pretty: true).encode(payload)
+        print(String(data: data, encoding: .utf8) ?? "{}")
+    }
+
+    static func statusPayload(executablePath: String) -> JSONValue {
         let expectedCommand = ariaCommandPath(from: executablePath)
         let expectedArgs = ["mcp", "serve"]
-        let payload: JSONValue
 
-        if let configuration = try fetchConfiguration() {
+        if let configuration = try? fetchConfiguration() {
             let actualCommand = configuredCommand(from: configuration) ?? ""
             let actualArgs = configuredArgs(from: configuration)
-            payload = .object([
+            return .object([
                 "installed": .bool(true),
                 "name": .string(serverName),
                 "expected_command": .string(expectedCommand),
@@ -58,17 +63,14 @@ enum CodexIntegration {
                 "command": .string(actualCommand),
                 "args": .array(actualArgs.map(JSONValue.string)),
             ])
-        } else {
-            payload = .object([
-                "installed": .bool(false),
-                "name": .string(serverName),
-                "expected_command": .string(expectedCommand),
-                "expected_args": .array(expectedArgs.map(JSONValue.string)),
-            ])
         }
 
-        let data = try JSONEncoder.runtimeEncoder(pretty: true).encode(payload)
-        print(String(data: data, encoding: .utf8) ?? "{}")
+        return .object([
+            "installed": .bool(false),
+            "name": .string(serverName),
+            "expected_command": .string(expectedCommand),
+            "expected_args": .array(expectedArgs.map(JSONValue.string)),
+        ])
     }
 
     private static func uninstall() throws {

@@ -11,6 +11,8 @@ enum AriaRuntimeCLI {
         }
 
         switch args[0] {
+        case "setup":
+            try SetupCommand.run(args: Array(args.dropFirst()), executablePath: CommandLine.arguments[0])
         case "daemon":
             try runDaemon(args: Array(args.dropFirst()))
         case "mcp":
@@ -46,6 +48,9 @@ enum AriaRuntimeCLI {
               aria daemon install-agent
               aria daemon uninstall-agent
               aria daemon status
+              aria setup
+              aria setup status
+              aria setup test-prompt
               aria mcp serve
               aria mcp print-config
               aria codex install

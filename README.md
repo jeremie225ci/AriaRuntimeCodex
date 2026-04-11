@@ -60,6 +60,19 @@ This installs `Aria Runtime.app` into `~/Applications`, links `aria` into `~/.lo
 
 The install surface is binary-first. End users should use the packaged app or pkg and should not need this repository at all.
 
+For the packaged app or any existing install, the canonical onboarding command is:
+
+```bash
+aria setup
+```
+
+Useful follow-ups:
+
+```bash
+aria setup status
+aria setup test-prompt
+```
+
 By default, repeated local installs reuse the existing `dist/Aria Runtime.app` bundle so macOS permissions are not reset on every test. To rebuild before installing:
 
 ```bash
@@ -104,6 +117,8 @@ Once installed, Codex should discover Aria as a local MCP server and receive Ari
 - MCP prompt `aria_computer_use`
 - MCP resources under `aria://...`
 - the canonical tools `aria_bootstrap`, `computer_snapshot`, and `computer_action`
+
+`aria setup` also prints a ready-to-run visual smoke prompt for Codex.
 
 ## Versioned Build
 

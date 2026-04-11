@@ -47,6 +47,7 @@ final class StatusBarAppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(makeItem(title: "Uninstall Launch Agent", action: #selector(uninstallLaunchAgent)))
         menu.addItem(.separator())
         menu.addItem(makeItem(title: "Copy Codex MCP Config", action: #selector(copyCodexMCPConfig)))
+        menu.addItem(makeItem(title: "Copy Setup Test Prompt", action: #selector(copySetupTestPrompt)))
         menu.addItem(makeItem(title: "Show Health", action: #selector(showHealth)))
         menu.addItem(makeItem(title: "Show Permissions", action: #selector(showPermissions)))
         menu.addItem(makeItem(title: "Request Permissions", action: #selector(requestPermissions)))
@@ -178,6 +179,13 @@ final class StatusBarAppDelegate: NSObject, NSApplicationDelegate {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(config, forType: .string)
         showAlert(title: "Codex MCP Config", message: "The Aria MCP config has been copied to the clipboard.")
+    }
+
+    @objc private func copySetupTestPrompt() {
+        let prompt = AriaControlPlane.setupTestPrompt()
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(prompt, forType: .string)
+        showAlert(title: "Aria Setup Test Prompt", message: "The Aria setup test prompt has been copied to the clipboard.")
     }
 
     @objc private func showHealth() {

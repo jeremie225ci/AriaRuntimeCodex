@@ -40,17 +40,7 @@ chmod +x "${TARGET_APP}/Contents/MacOS/AriaRuntimeApp" "${BUNDLE_ARIA}" "${TARGE
 ln -sfn "${BUNDLE_ARIA}" "${CLI_LINK}"
 
 open "${TARGET_APP}" >/dev/null 2>&1 || true
-"${BUNDLE_ARIA}" daemon install-agent
-"${BUNDLE_ARIA}" daemon install-agent >/dev/null 2>&1 || true
-
-for _ in $(seq 1 20); do
-  if "${BUNDLE_ARIA}" health >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-done
-
-"${BUNDLE_ARIA}" permissions request >/dev/null 2>&1 || true
+"${BUNDLE_ARIA}" setup >/dev/null 2>&1 || true
 
 PERMISSIONS_READY=0
 for _ in $(seq 1 "${PERMISSION_WAIT_SECONDS}"); do
@@ -61,14 +51,6 @@ for _ in $(seq 1 "${PERMISSION_WAIT_SECONDS}"); do
   fi
   sleep 1
 done
-
-"${BUNDLE_ARIA}" daemon install-agent >/dev/null 2>&1 || true
-
-if command -v codex >/dev/null 2>&1; then
-  "${BUNDLE_ARIA}" codex install
-else
-  echo "Codex CLI not found; skipped Codex MCP registration."
-fi
 
 echo ""
 echo "Aria Runtime installed locally."
@@ -81,6 +63,6 @@ else
 fi
 echo ""
 echo "Next:"
+echo "  aria setup status"
 echo "  codex"
-echo "  ask Codex to use Aria for a visual task"
-echo "  Aria will expose bootstrap rules, prompts, and the canonical computer-use loop automatically"
+echo "  use Aria for a visual task"
