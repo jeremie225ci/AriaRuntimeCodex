@@ -302,7 +302,7 @@ final class MCPServer {
 
     private func policyViolation(toolName: String, arguments: [String: JSONValue]) -> String? {
         switch toolName {
-        case "aria_bootstrap", "runtime_health", "runtime_permissions", "desktop_list_windows", "read_clipboard", "copy_to_clipboard":
+        case "aria_bootstrap", "runtime_health", "runtime_permissions", "desktop_list_windows", "read_clipboard", "read_clipboard_image", "copy_to_clipboard":
             return nil
         case "system_open_application", "system_open_url", "desktop_focus_application", "reveal_path":
             guard sessionState.bootstrapCount > 0 else {

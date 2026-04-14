@@ -162,6 +162,11 @@ public final class MacOSRuntimeService: @unchecked Sendable {
                 inputSchema: .object([:])
             ),
             ToolDescriptor(
+                name: "read_clipboard_image",
+                description: "Read the current macOS clipboard image and return it as MCP image content when available.",
+                inputSchema: .object([:])
+            ),
+            ToolDescriptor(
                 name: "copy_to_clipboard",
                 description: "Write text to the macOS clipboard.",
                 inputSchema: .object([
@@ -268,6 +273,8 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             ])
         case "read_clipboard":
             return try readClipboard()
+        case "read_clipboard_image":
+            return try readClipboardImage()
         case "copy_to_clipboard":
             let text = try requiredString(arguments, key: "text")
             try writeClipboard(text)
@@ -977,12 +984,82 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         ])
     }
 
+    private func readClipboardImage() throws -> JSONValue {
+        let payload = try runOnMain { () throws -> [String: JSONValue] in
+            let pasteboard = NSPasteboard.general
+
+            if let pngData = pasteboard.data(forType: .png) {
+                return try self.clipboardImagePayload(data: pngData, fallbackMime: "image/png")
+            }
+
+            if let tiffData = pasteboard.data(forType: .tiff) {
+                return try self.clipboardImagePayload(data: tiffData, fallbackMime: "image/tiff")
+            }
+
+            if
+                let image = pasteboard.readObjects(forClasses: [NSImage.self], options: nil)?.first as? NSImage,
+                let pngData = try? self.pngData(from: image)
+            {
+                return try self.clipboardImagePayload(data: pngData, fallbackMime: "image/png")
+            }
+
+            throw RuntimeProtocolError.runtimeFailure("Clipboard does not contain an image.")
+        }
+
+        return .object(payload)
+    }
+
     private func writeClipboard(_ text: String) throws {
         try runOnMain {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.setString(text, forType: .string)
         }
+    }
+
+    private func clipboardImagePayload(data: Data, fallbackMime: String) throws -> [String: JSONValue] {
+        let imageData: Data
+        let mimeType: String
+        let width: Double
+        let height: Double
+
+        if let bitmap = NSBitmapImageRep(data: data) {
+            width = Double(bitmap.pixelsWide)
+            height = Double(bitmap.pixelsHigh)
+            if let pngData = bitmap.representation(using: .png, properties: [:]) {
+                imageData = pngData
+                mimeType = "image/png"
+            } else {
+                imageData = data
+                mimeType = fallbackMime
+            }
+        } else if let image = NSImage(data: data) {
+            imageData = try pngData(from: image)
+            width = Double(max(1, Int(image.size.width.rounded())))
+            height = Double(max(1, Int(image.size.height.rounded())))
+            mimeType = "image/png"
+        } else {
+            throw RuntimeProtocolError.runtimeFailure("Clipboard image data could not be decoded.")
+        }
+
+        return [
+            "mime": .string(mimeType),
+            "image_base64": .string(imageData.base64EncodedString()),
+            "width": .number(width),
+            "height": .number(height),
+            "size_bytes": .number(Double(imageData.count)),
+        ]
+    }
+
+    private func pngData(from image: NSImage) throws -> Data {
+        guard
+            let tiffData = image.tiffRepresentation,
+            let bitmap = NSBitmapImageRep(data: tiffData),
+            let pngData = bitmap.representation(using: .png, properties: [:])
+        else {
+            throw RuntimeProtocolError.runtimeFailure("Unable to encode clipboard image as PNG.")
+        }
+        return pngData
     }
 
     private func runOnMain<T>(_ block: @escaping @Sendable () throws -> T) throws -> T {

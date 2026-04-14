@@ -288,6 +288,7 @@ enum SmokeRunner {
         try require(runtimeToolNames.contains("desktop_list_windows"), "runtime.tools includes desktop_list_windows")
         try require(runtimeToolNames.contains("desktop_focus_application"), "runtime.tools includes desktop_focus_application")
         try require(runtimeToolNames.contains("read_clipboard"), "runtime.tools includes read_clipboard")
+        try require(runtimeToolNames.contains("read_clipboard_image"), "runtime.tools includes read_clipboard_image")
         try require(runtimeToolNames.contains("copy_to_clipboard"), "runtime.tools includes copy_to_clipboard")
         try require(runtimeToolNames.contains("reveal_path"), "runtime.tools includes reveal_path")
         pass("runtime.tools returned \(toolCount) tools")
@@ -405,6 +406,7 @@ enum SmokeRunner {
         try require(toolNames.contains("desktop_list_windows"), "MCP tools/list includes desktop_list_windows")
         try require(toolNames.contains("desktop_focus_application"), "MCP tools/list includes desktop_focus_application")
         try require(toolNames.contains("read_clipboard"), "MCP tools/list includes read_clipboard")
+        try require(toolNames.contains("read_clipboard_image"), "MCP tools/list includes read_clipboard_image")
         try require(toolNames.contains("copy_to_clipboard"), "MCP tools/list includes copy_to_clipboard")
         try require(toolNames.contains("reveal_path"), "MCP tools/list includes reveal_path")
         pass("MCP tools/list returned \(toolNames.count) tools")
@@ -615,6 +617,7 @@ enum SmokeRunner {
         try require(toolNames.contains("computer_snapshot"), "JSONL tools/list includes computer_snapshot")
         try require(toolNames.contains("desktop_list_windows"), "JSONL tools/list includes desktop_list_windows")
         try require(toolNames.contains("read_clipboard"), "JSONL tools/list includes read_clipboard")
+        try require(toolNames.contains("read_clipboard_image"), "JSONL tools/list includes read_clipboard_image")
         pass("JSONL tools/list returned \(toolNames.count) tools")
 
         let blockedBeforeBootstrap = try client.request(
