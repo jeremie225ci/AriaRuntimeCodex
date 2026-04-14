@@ -54,7 +54,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             ),
             ToolDescriptor(
                 name: "aria_bootstrap",
-                description: "Call exactly once at the start of each visual/UI task. Returns Aria's mandatory operating rules for Codex.",
+                description: "Call exactly once at the start of each visual/UI task. This resets Codex into Aria-controlled mode and returns the mandatory operating rules for the whole task.",
                 inputSchema: .object([
                     "type": .string("object"),
                     "properties": .object([
@@ -65,7 +65,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             ),
             ToolDescriptor(
                 name: "computer_snapshot",
-                description: "Capture the current screen and return the image plus Aria loop guidance. Requires aria_bootstrap first. Use before the first UI action and after app/site entry.",
+                description: "Capture the current screen and return the image plus Aria loop guidance. Requires aria_bootstrap first. Use before the first UI action, after app/site entry, and whenever the latest screen proof is insufficient.",
                 inputSchema: .object([
                     "type": .string("object"),
                     "properties": .object([
@@ -76,7 +76,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             ),
             ToolDescriptor(
                 name: "computer_action",
-                description: "The canonical Aria UI tool. Execute exactly one UI action and receive the post-action screenshot to inspect before the next action. Requires aria_bootstrap and a fresh computer_snapshot first.",
+                description: "The canonical Aria UI tool. Execute exactly one UI action and receive the post-action screenshot to inspect before the next action. Requires aria_bootstrap and a fresh computer_snapshot first. Do not leave the Aria loop or claim completion without screenshot proof.",
                 inputSchema: .object([
                     "type": .string("object"),
                     "properties": .object([
@@ -119,7 +119,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             ),
             ToolDescriptor(
                 name: "system_open_application",
-                description: "Launch an application by name, bundle identifier, or full path. Requires aria_bootstrap first. After opening, call computer_snapshot before acting visually.",
+                description: "Launch an application by name, bundle identifier, or full path. Requires aria_bootstrap first. After opening, stay in the Aria loop and call computer_snapshot before acting visually.",
                 inputSchema: .object([
                     "type": .string("object"),
                     "properties": .object([
@@ -131,7 +131,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             ),
             ToolDescriptor(
                 name: "system_open_url",
-                description: "Open a URL using the user's default browser. Requires aria_bootstrap first. After navigation, call computer_snapshot before any visual interaction.",
+                description: "Open a URL using the user's default browser. Requires aria_bootstrap first. After navigation, stay in the Aria loop and call computer_snapshot before any visual interaction.",
                 inputSchema: .object([
                     "type": .string("object"),
                     "properties": .object([
@@ -378,9 +378,13 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         var payload = screenshotPayload(from: frame)
         payload["mode"] = .string("computer_snapshot")
         payload["windows"] = listWindows()["windows"] ?? .array([])
+        payload["locked_mode"] = .bool(true)
+        payload["reset_rules"] = .array(AriaControlPlane.resetRules.map(JSONValue.string))
         payload["visual_loop_rules"] = .array(AriaControlPlane.visualLoopRules.map(JSONValue.string))
         payload["forbidden_defaults"] = .array(AriaControlPlane.forbiddenDefaults.map(JSONValue.string))
+        payload["non_aria_research_rules"] = .array(AriaControlPlane.nonAriaResearchRules.map(JSONValue.string))
         payload["sensitive_action_rules"] = .array(AriaControlPlane.sensitiveActionRules.map(JSONValue.string))
+        payload["completion_proof_rules"] = .array(AriaControlPlane.completionProofRules.map(JSONValue.string))
         payload["next_step"] = .string("Inspect the screenshot, then choose exactly one computer_action.")
         if let goal, !goal.isEmpty {
             payload["goal"] = .string(goal)
@@ -402,8 +406,14 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         )
         var payload = screenshotPayload(from: afterFrame)
         payload["mode"] = .string("computer_action")
+        payload["locked_mode"] = .bool(true)
+        payload["reset_rules"] = .array(AriaControlPlane.resetRules.map(JSONValue.string))
         payload["ok"] = .bool(verification.confirmed || !verification.required)
         payload["executed_action"] = .object(executedAction)
+        payload["visual_loop_rules"] = .array(AriaControlPlane.visualLoopRules.map(JSONValue.string))
+        payload["forbidden_defaults"] = .array(AriaControlPlane.forbiddenDefaults.map(JSONValue.string))
+        payload["non_aria_research_rules"] = .array(AriaControlPlane.nonAriaResearchRules.map(JSONValue.string))
+        payload["completion_proof_rules"] = .array(AriaControlPlane.completionProofRules.map(JSONValue.string))
         payload["visual_confirmation"] = verification.payload()
         if let goal = arguments["goal"]?.stringValue, !goal.isEmpty {
             payload["goal"] = .string(goal)

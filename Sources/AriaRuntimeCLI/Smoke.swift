@@ -395,6 +395,7 @@ enum SmokeRunner {
         let initResult = try requireObject(initialize.result, context: "initialize")
         try require(initResult["serverInfo"]?["name"]?.stringValue == "aria-runtime", "initialize returned the aria-runtime server name")
         try require(initResult["instructions"]?.stringValue?.contains("Aria is the control layer for Codex") == true, "initialize returned Aria control instructions")
+        try require(initResult["instructions"]?.stringValue?.contains("not operating in free-form Codex mode anymore") == true, "initialize returned the strict Aria reset contract")
         pass("MCP initialize succeeded")
 
         try client.notify(method: "notifications/initialized")
@@ -538,6 +539,9 @@ enum SmokeRunner {
         let bootstrapStructured = try requireStructuredContent(bootstrapCall, context: "tools/call aria_bootstrap")
         try require((bootstrapStructured["canonical_visual_tools"]?.arrayValue ?? []).contains(.string("computer_snapshot")), "aria_bootstrap returned canonical visual tools")
         try require(bootstrapStructured["session"]?["bootstrap_count"]?.intValue == 1, "aria_bootstrap returned session state")
+        try require(bootstrapStructured["locked_mode"]?.boolValue == true, "aria_bootstrap returned locked_mode")
+        try require((bootstrapStructured["reset_rules"]?.arrayValue ?? []).isEmpty == false, "aria_bootstrap returned reset rules")
+        try require((bootstrapStructured["completion_proof_rules"]?.arrayValue ?? []).isEmpty == false, "aria_bootstrap returned completion proof rules")
         pass("MCP aria_bootstrap tool call succeeded")
 
         let blockedBeforeSnapshot = try client.request(
@@ -649,6 +653,7 @@ enum SmokeRunner {
         let promptGetResult = try requireObject(promptGet.result, context: "prompts/get")
         let promptMessages = promptGetResult["messages"]?.arrayValue ?? []
         try require(promptMessages.first?["content"]?["text"]?.stringValue?.contains("Call aria_bootstrap first") == true, "JSONL prompts/get returned the Aria control prompt")
+        try require(promptMessages.first?["content"]?["text"]?.stringValue?.contains("Reset your default Codex habits") == true, "JSONL prompts/get returned the strict reset wording")
         pass("JSONL prompts/get succeeded")
 
         let tools = try client.request(method: "tools/list", params: .object([
