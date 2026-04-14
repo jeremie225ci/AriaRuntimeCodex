@@ -140,6 +140,49 @@ public final class MacOSRuntimeService: @unchecked Sendable {
                     "required": .array([.string("url")]),
                 ])
             ),
+            ToolDescriptor(
+                name: "desktop_list_windows",
+                description: "List visible on-screen windows so Codex can identify the current app and window state.",
+                inputSchema: .object([:])
+            ),
+            ToolDescriptor(
+                name: "desktop_focus_application",
+                description: "Focus a running macOS application by name or bundle identifier. Requires aria_bootstrap first. After focusing, call computer_snapshot before acting visually.",
+                inputSchema: .object([
+                    "type": .string("object"),
+                    "properties": .object([
+                        "name": .object(["type": .string("string")]),
+                        "bundle_id": .object(["type": .string("string")]),
+                    ]),
+                ])
+            ),
+            ToolDescriptor(
+                name: "read_clipboard",
+                description: "Read the current macOS text clipboard.",
+                inputSchema: .object([:])
+            ),
+            ToolDescriptor(
+                name: "copy_to_clipboard",
+                description: "Write text to the macOS clipboard.",
+                inputSchema: .object([
+                    "type": .string("object"),
+                    "properties": .object([
+                        "text": .object(["type": .string("string")]),
+                    ]),
+                    "required": .array([.string("text")]),
+                ])
+            ),
+            ToolDescriptor(
+                name: "reveal_path",
+                description: "Reveal an existing file or directory in Finder. Requires aria_bootstrap first. After Finder opens, call computer_snapshot before acting visually.",
+                inputSchema: .object([
+                    "type": .string("object"),
+                    "properties": .object([
+                        "path": .object(["type": .string("string")]),
+                    ]),
+                    "required": .array([.string("path")]),
+                ])
+            ),
         ]
     }
 
@@ -212,6 +255,33 @@ public final class MacOSRuntimeService: @unchecked Sendable {
                 "ok": .bool(true),
                 "url": .string(urlValue),
                 "next_step": .string("Call computer_snapshot after the page finishes loading."),
+            ])
+        case "desktop_list_windows":
+            return listWindows()
+        case "desktop_focus_application":
+            try focusApplication(arguments: arguments)
+            let descriptor = arguments["bundle_id"]?.stringValue ?? arguments["name"]?.stringValue ?? ""
+            return .object([
+                "ok": .bool(true),
+                "application": .string(descriptor),
+                "next_step": .string("Call computer_snapshot before the next visual action."),
+            ])
+        case "read_clipboard":
+            return try readClipboard()
+        case "copy_to_clipboard":
+            let text = try requiredString(arguments, key: "text")
+            try writeClipboard(text)
+            return .object([
+                "ok": .bool(true),
+                "length": .number(Double(text.count)),
+            ])
+        case "reveal_path":
+            let rawPath = try requiredString(arguments, key: "path")
+            try revealPath(rawPath)
+            return .object([
+                "ok": .bool(true),
+                "path": .string(rawPath),
+                "next_step": .string("Call computer_snapshot after Finder is visible if you need visual interaction."),
             ])
         default:
             throw RuntimeProtocolError.toolNotFound(tool)

@@ -283,8 +283,40 @@ enum SmokeRunner {
         let tools = service.handle(RuntimeRequest(method: .tools))
         let toolResult = try requireRuntimeResult(tools, context: "runtime.tools")
         let toolCount = toolResult["tools"]?.arrayValue?.count ?? 0
-        try require(toolCount >= 5, "runtime.tools returned at least five tools")
+        let runtimeToolNames = Set((toolResult["tools"]?.arrayValue ?? []).compactMap { $0["name"]?.stringValue })
+        try require(toolCount >= 10, "runtime.tools returned at least ten tools")
+        try require(runtimeToolNames.contains("desktop_list_windows"), "runtime.tools includes desktop_list_windows")
+        try require(runtimeToolNames.contains("desktop_focus_application"), "runtime.tools includes desktop_focus_application")
+        try require(runtimeToolNames.contains("read_clipboard"), "runtime.tools includes read_clipboard")
+        try require(runtimeToolNames.contains("copy_to_clipboard"), "runtime.tools includes copy_to_clipboard")
+        try require(runtimeToolNames.contains("reveal_path"), "runtime.tools includes reveal_path")
         pass("runtime.tools returned \(toolCount) tools")
+
+        let windows = service.handle(
+            RuntimeRequest(
+                method: .invoke,
+                params: .object([
+                    "tool": .string("desktop_list_windows"),
+                    "arguments": .object([:]),
+                ])
+            )
+        )
+        let windowsResult = try requireRuntimeResult(windows, context: "desktop_list_windows")
+        try require(windowsResult["windows"]?.arrayValue != nil, "desktop_list_windows returned a windows array")
+        pass("desktop_list_windows returned window metadata")
+
+        let clipboard = service.handle(
+            RuntimeRequest(
+                method: .invoke,
+                params: .object([
+                    "tool": .string("read_clipboard"),
+                    "arguments": .object([:]),
+                ])
+            )
+        )
+        let clipboardResult = try requireRuntimeResult(clipboard, context: "read_clipboard")
+        try require(clipboardResult["text"]?.stringValue != nil, "read_clipboard returned clipboard text")
+        pass("read_clipboard returned clipboard state")
 
         let bootstrap = service.handle(
             RuntimeRequest(
@@ -370,6 +402,11 @@ enum SmokeRunner {
         try require(toolNames.contains("aria_bootstrap"), "MCP tools/list includes aria_bootstrap")
         try require(toolNames.contains("computer_snapshot"), "MCP tools/list includes computer_snapshot")
         try require(toolNames.contains("computer_action"), "MCP tools/list includes computer_action")
+        try require(toolNames.contains("desktop_list_windows"), "MCP tools/list includes desktop_list_windows")
+        try require(toolNames.contains("desktop_focus_application"), "MCP tools/list includes desktop_focus_application")
+        try require(toolNames.contains("read_clipboard"), "MCP tools/list includes read_clipboard")
+        try require(toolNames.contains("copy_to_clipboard"), "MCP tools/list includes copy_to_clipboard")
+        try require(toolNames.contains("reveal_path"), "MCP tools/list includes reveal_path")
         pass("MCP tools/list returned \(toolNames.count) tools")
 
         let blockedBeforeBootstrap = try client.request(
@@ -387,6 +424,19 @@ enum SmokeRunner {
         let blockedBeforeBootstrapStructured = try requireToolError(blockedBeforeBootstrap, context: "tools/call computer_action before bootstrap")
         try require(blockedBeforeBootstrapStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "computer_action before bootstrap is rejected by Aria policy")
         pass("MCP policy blocks computer_action before aria_bootstrap")
+
+        let focusBlockedBeforeBootstrap = try client.request(
+            method: "tools/call",
+            params: .object([
+                "name": .string("desktop_focus_application"),
+                "arguments": .object([
+                    "name": .string("Safari"),
+                ]),
+            ])
+        )
+        let focusBlockedStructured = try requireToolError(focusBlockedBeforeBootstrap, context: "tools/call desktop_focus_application before bootstrap")
+        try require(focusBlockedStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "desktop_focus_application before bootstrap is rejected by Aria policy")
+        pass("MCP policy blocks desktop_focus_application before aria_bootstrap")
 
         let healthCall = try client.request(
             method: "tools/call",
@@ -408,6 +458,28 @@ enum SmokeRunner {
         )
         let permissionsStructured = try requireStructuredContent(permissionsCall, context: "tools/call runtime_permissions")
         pass("MCP runtime_permissions tool call succeeded")
+
+        let windowsCall = try client.request(
+            method: "tools/call",
+            params: .object([
+                "name": .string("desktop_list_windows"),
+                "arguments": .object([:]),
+            ])
+        )
+        let windowsStructured = try requireStructuredContent(windowsCall, context: "tools/call desktop_list_windows")
+        try require(windowsStructured["windows"]?.arrayValue != nil, "desktop_list_windows via MCP returned a windows array")
+        pass("MCP desktop_list_windows tool call succeeded")
+
+        let clipboardCall = try client.request(
+            method: "tools/call",
+            params: .object([
+                "name": .string("read_clipboard"),
+                "arguments": .object([:]),
+            ])
+        )
+        let clipboardStructured = try requireStructuredContent(clipboardCall, context: "tools/call read_clipboard")
+        try require(clipboardStructured["text"]?.stringValue != nil, "read_clipboard via MCP returned clipboard text")
+        pass("MCP read_clipboard tool call succeeded")
 
         let bootstrapCall = try client.request(
             method: "tools/call",
@@ -541,6 +613,8 @@ enum SmokeRunner {
         let toolNames = Set((toolsResult["tools"]?.arrayValue ?? []).compactMap { $0["name"]?.stringValue })
         try require(toolNames.contains("runtime_health"), "JSONL tools/list includes runtime_health")
         try require(toolNames.contains("computer_snapshot"), "JSONL tools/list includes computer_snapshot")
+        try require(toolNames.contains("desktop_list_windows"), "JSONL tools/list includes desktop_list_windows")
+        try require(toolNames.contains("read_clipboard"), "JSONL tools/list includes read_clipboard")
         pass("JSONL tools/list returned \(toolNames.count) tools")
 
         let blockedBeforeBootstrap = try client.request(
