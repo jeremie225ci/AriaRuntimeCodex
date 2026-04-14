@@ -3,6 +3,8 @@ import AriaRuntimeShared
 
 enum CodexIntegration {
     private static let serverName = "aria-runtime"
+    private static let instructionsDirectoryName = "aria-runtime"
+    private static let instructionsFileName = "developer_instructions.md"
 
     static func run(args: [String], executablePath: String) throws {
         switch args {
@@ -24,18 +26,21 @@ enum CodexIntegration {
 
     private static func install(executablePath: String) throws {
         let commandPath = ariaCommandPath(from: executablePath)
+        let profileInstall = try installManagedProfile()
         let existing = try fetchConfiguration()
         let currentCommand = configuredCommand(from: existing)
         let currentArgs = configuredArgs(from: existing)
 
         if currentCommand == commandPath, currentArgs == ["mcp", "serve"] {
             print("Codex MCP server `\(serverName)` is already installed.")
+            print("Aria Codex profile `\(AriaCodexProfile.profileName)` is active from: \(profileInstall.instructionsPath)")
             return
         }
 
         _ = try? runCodex(arguments: ["mcp", "remove", serverName], allowFailure: true)
         _ = try runCodex(arguments: ["mcp", "add", serverName, "--", commandPath, "mcp", "serve"])
         print("Installed Codex MCP server `\(serverName)` with command: \(commandPath) mcp serve")
+        print("Installed Aria Codex profile `\(AriaCodexProfile.profileName)` with instructions: \(profileInstall.instructionsPath)")
     }
 
     private static func status(executablePath: String) throws {
@@ -47,6 +52,7 @@ enum CodexIntegration {
     static func statusPayload(executablePath: String) -> JSONValue {
         let expectedCommand = ariaCommandPath(from: executablePath)
         let expectedArgs = ["mcp", "serve"]
+        let profileStatus = managedProfileStatus()
 
         if let configuration = try? fetchConfiguration() {
             let actualCommand = configuredCommand(from: configuration) ?? ""
@@ -62,6 +68,7 @@ enum CodexIntegration {
                 "configuration": .object(configuration),
                 "command": .string(actualCommand),
                 "args": .array(actualArgs.map(JSONValue.string)),
+                "aria_profile": .object(profileStatus),
             ])
         }
 
@@ -70,12 +77,15 @@ enum CodexIntegration {
             "name": .string(serverName),
             "expected_command": .string(expectedCommand),
             "expected_args": .array(expectedArgs.map(JSONValue.string)),
+            "aria_profile": .object(profileStatus),
         ])
     }
 
     private static func uninstall() throws {
         _ = try runCodex(arguments: ["mcp", "remove", serverName], allowFailure: false)
+        try uninstallManagedProfile()
         print("Removed Codex MCP server `\(serverName)`.")
+        print("Removed Aria Codex profile `\(AriaCodexProfile.profileName)` from the local Codex config.")
     }
 
     private static func fetchConfiguration() throws -> [String: JSONValue]? {
@@ -105,6 +115,59 @@ enum CodexIntegration {
             return args
         }
         return configuration["transport"]?["args"]?.arrayValue?.compactMap(\.stringValue) ?? []
+    }
+
+    private static func installManagedProfile() throws -> (configPath: String, instructionsPath: String) {
+        let fileManager = FileManager.default
+        let codexHome = fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".codex", isDirectory: true)
+        let configURL = codexHome.appendingPathComponent("config.toml", isDirectory: false)
+        let instructionsDirectoryURL = codexHome.appendingPathComponent(instructionsDirectoryName, isDirectory: true)
+        let instructionsURL = instructionsDirectoryURL.appendingPathComponent(instructionsFileName, isDirectory: false)
+
+        try fileManager.createDirectory(at: codexHome, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: instructionsDirectoryURL, withIntermediateDirectories: true)
+        try AriaCodexProfile.developerInstructionsText().write(to: instructionsURL, atomically: true, encoding: .utf8)
+
+        let existing = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+        let merged = AriaCodexProfile.mergedConfig(existing: existing, developerInstructionsFile: instructionsURL.path)
+        try merged.write(to: configURL, atomically: true, encoding: .utf8)
+
+        return (configURL.path, instructionsURL.path)
+    }
+
+    private static func uninstallManagedProfile() throws {
+        let fileManager = FileManager.default
+        let codexHome = fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".codex", isDirectory: true)
+        let configURL = codexHome.appendingPathComponent("config.toml", isDirectory: false)
+        let instructionsDirectoryURL = codexHome.appendingPathComponent(instructionsDirectoryName, isDirectory: true)
+
+        if let existing = try? String(contentsOf: configURL, encoding: .utf8) {
+            let cleaned = AriaCodexProfile.removingProfile(from: existing)
+            try cleaned.write(to: configURL, atomically: true, encoding: .utf8)
+        }
+
+        if fileManager.fileExists(atPath: instructionsDirectoryURL.path) {
+            try? fileManager.removeItem(at: instructionsDirectoryURL)
+        }
+    }
+
+    private static func managedProfileStatus() -> [String: JSONValue] {
+        let fileManager = FileManager.default
+        let codexHome = fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".codex", isDirectory: true)
+        let configURL = codexHome.appendingPathComponent("config.toml", isDirectory: false)
+        let instructionsURL = codexHome
+            .appendingPathComponent(instructionsDirectoryName, isDirectory: true)
+            .appendingPathComponent(instructionsFileName, isDirectory: false)
+        let existing = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+
+        return [
+            "profile_name": .string(AriaCodexProfile.profileName),
+            "config_path": .string(configURL.path),
+            "instructions_path": .string(instructionsURL.path),
+            "instructions_file_exists": .bool(fileManager.fileExists(atPath: instructionsURL.path)),
+            "disabled_tools": .array(AriaCodexProfile.disabledTools.map(JSONValue.string)),
+            "installed": .bool(AriaCodexProfile.profileInstalled(in: existing, developerInstructionsFile: instructionsURL.path)),
+        ]
     }
 
     private static func ariaCommandPath(from executablePath: String) -> String {

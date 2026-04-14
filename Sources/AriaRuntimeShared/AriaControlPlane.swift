@@ -210,7 +210,7 @@ public enum AriaControlPlane {
 
     public static func setupTestPrompt() -> String {
         """
-        Use aria-runtime for this visual task. Call aria_bootstrap exactly once, then if needed open TextEdit, call computer_snapshot, and use computer_action one step at a time to create a new document and type: Aria Runtime Codex setup test.
+        Use aria-runtime for this visual task. Open Safari, call aria_bootstrap exactly once, then use computer_snapshot and computer_action one step at a time to go to ycombinator.com, scroll twice, and report only what the latest screenshot proves.
         """
     }
 }

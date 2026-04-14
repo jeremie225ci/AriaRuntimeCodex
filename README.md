@@ -58,6 +58,8 @@ For a no-admin local install in one command:
 
 This installs `Aria Runtime.app` into `~/Applications`, links `aria` into `~/.local/bin/aria`, starts the background runtime, requests macOS permissions, and registers the MCP server for Codex when the `codex` CLI is available.
 
+`aria setup` now also installs an Aria-managed default Codex profile in `~/.codex/config.toml` and writes strict visual-task instructions to `~/.codex/aria-runtime/developer_instructions.md`. That profile disables native `web_search` and `tool_search` so Codex stays inside Aria for computer use.
+
 The install surface is binary-first. End users should use the packaged app or pkg and should not need this repository at all.
 
 For the packaged app or any existing install, the canonical onboarding command is:
@@ -110,6 +112,8 @@ kill %1
 ```
 
 This registers `aria-runtime` as a local MCP server for Codex using the shipped app bundle binary.
+
+It also sets Codex's default profile to `aria`, so a normal `codex` session starts with Aria's visual-task rules already loaded.
 
 Once installed, Codex should discover Aria as a local MCP server and receive Aria's control instructions through:
 

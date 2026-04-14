@@ -23,14 +23,17 @@ enum SetupCommand {
         let agentArguments = launchAgentManager.defaultAgentArguments(relativeTo: executableURL)
 
         try launchAgentManager.install(agentExecutableURL: agentURL, arguments: agentArguments)
-        _ = try waitForRuntimeReady(timeoutSeconds: 20)
-
-        let client = RuntimeClient()
-        let permissionRequest = try client.send(method: .requestPermissions)
-        let permissions = try currentPermissions(client: client)
 
         if commandExists("codex") {
             try CodexIntegration.run(args: ["install"], executablePath: executablePath)
+        }
+
+        var permissionRequest: RuntimeResponse?
+        var permissions: [String: JSONValue]?
+        if (try? waitForRuntimeReady(timeoutSeconds: 20)) != nil {
+            let client = RuntimeClient()
+            permissionRequest = try? client.send(method: .requestPermissions)
+            permissions = try? currentPermissions(client: client)
         }
 
         let status = try statusPayload(executablePath: executablePath, permissionRequest: permissionRequest)
@@ -39,13 +42,14 @@ enum SetupCommand {
             print(output)
         }
 
-        let accessibilityTrusted = permissions["accessibility_trusted"]?.boolValue ?? false
-        let screenRecordingTrusted = permissions["screen_recording_trusted"]?.boolValue ?? false
+        let accessibilityTrusted = permissions?["accessibility_trusted"]?.boolValue ?? false
+        let screenRecordingTrusted = permissions?["screen_recording_trusted"]?.boolValue ?? false
         print("")
         print("Next:")
         if accessibilityTrusted && screenRecordingTrusted {
             print("  codex")
             print("  \(AriaControlPlane.setupTestPrompt())")
+            print("  Aria has set Codex's default profile to `aria` for visual tasks.")
         } else {
             print("  Finish the macOS permission prompts for Aria Runtime.")
             print("  Then relaunch or rerun: aria setup")

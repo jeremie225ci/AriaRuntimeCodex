@@ -40,7 +40,10 @@ chmod +x "${TARGET_APP}/Contents/MacOS/AriaRuntimeApp" "${BUNDLE_ARIA}" "${TARGE
 ln -sfn "${BUNDLE_ARIA}" "${CLI_LINK}"
 
 open "${TARGET_APP}" >/dev/null 2>&1 || true
-"${BUNDLE_ARIA}" setup >/dev/null 2>&1 || true
+SETUP_READY=0
+if "${BUNDLE_ARIA}" setup >/dev/null 2>&1; then
+  SETUP_READY=1
+fi
 
 PERMISSIONS_READY=0
 for _ in $(seq 1 "${PERMISSION_WAIT_SECONDS}"); do
@@ -60,6 +63,11 @@ if [[ "${PERMISSIONS_READY}" == "1" ]]; then
   echo "Permissions: ready"
 else
   echo "Permissions: pending approval in macOS prompts/settings"
+fi
+if [[ "${SETUP_READY}" == "1" ]]; then
+  echo "Codex mode: default profile \`aria\` installed"
+else
+  echo "Codex mode: rerun \`aria setup\` after install"
 fi
 echo ""
 echo "Next:"
