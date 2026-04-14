@@ -196,6 +196,28 @@ public final class MacOSRuntimeService: @unchecked Sendable {
                 inputSchema: .object([:])
             ),
             ToolDescriptor(
+                name: "select_file_for_active_dialog",
+                description: "Select an existing file in the frontmost macOS open/upload dialog using the standard Go to Folder flow. Requires aria_bootstrap first. After selection, call computer_snapshot before the next visual decision.",
+                inputSchema: .object([
+                    "type": .string("object"),
+                    "properties": .object([
+                        "path": .object(["type": .string("string")]),
+                    ]),
+                    "required": .array([.string("path")]),
+                ])
+            ),
+            ToolDescriptor(
+                name: "upload_file_to_active_app",
+                description: "Alias for selecting a file in the frontmost macOS upload/open dialog. Requires aria_bootstrap first. After selection, call computer_snapshot before the next visual decision.",
+                inputSchema: .object([
+                    "type": .string("object"),
+                    "properties": .object([
+                        "path": .object(["type": .string("string")]),
+                    ]),
+                    "required": .array([.string("path")]),
+                ])
+            ),
+            ToolDescriptor(
                 name: "reveal_path",
                 description: "Reveal an existing file or directory in Finder. Requires aria_bootstrap first. After Finder opens, call computer_snapshot before acting visually.",
                 inputSchema: .object([
@@ -316,6 +338,20 @@ public final class MacOSRuntimeService: @unchecked Sendable {
                 "ok": .bool(true),
                 "next_step": .string("Call computer_snapshot before the next visual action."),
             ])
+        case "select_file_for_active_dialog":
+            let rawPath = try requiredString(arguments, key: "path")
+            let payload = try selectFileForActiveDialog(rawPath)
+            return .object(payload.merging([
+                "ok": .bool(true),
+                "next_step": .string("Call computer_snapshot before the next visual action."),
+            ]) { _, new in new })
+        case "upload_file_to_active_app":
+            let rawPath = try requiredString(arguments, key: "path")
+            let payload = try selectFileForActiveDialog(rawPath)
+            return .object(payload.merging([
+                "ok": .bool(true),
+                "next_step": .string("Call computer_snapshot before the next visual action."),
+            ]) { _, new in new })
         case "reveal_path":
             let rawPath = try requiredString(arguments, key: "path")
             try revealPath(rawPath)
@@ -1235,6 +1271,40 @@ public final class MacOSRuntimeService: @unchecked Sendable {
     private func pasteClipboard() throws {
         try ensureAccessibility()
         try keyPress(["command", "v"])
+    }
+
+    private func selectFileForActiveDialog(_ rawPath: String) throws -> [String: JSONValue] {
+        try ensureAccessibility()
+        let normalizedPath = try normalizedExistingPath(rawPath)
+
+        try keyPress(["command", "shift", "g"])
+        usleep(220_000)
+        try keyPress(["command", "a"])
+        usleep(80_000)
+        try typeText(normalizedPath)
+        usleep(120_000)
+        try keyPress(["return"])
+
+        var isDirectory = ObjCBool(false)
+        let exists = FileManager.default.fileExists(atPath: normalizedPath, isDirectory: &isDirectory)
+        if exists && isDirectory.boolValue == false {
+            usleep(220_000)
+            try keyPress(["return"])
+        }
+
+        return [
+            "path": .string(normalizedPath),
+            "is_directory": .bool(isDirectory.boolValue),
+        ]
+    }
+
+    private func normalizedExistingPath(_ rawPath: String) throws -> String {
+        let expanded = NSString(string: rawPath).expandingTildeInPath
+        let standardized = NSString(string: expanded).standardizingPath
+        guard FileManager.default.fileExists(atPath: standardized) else {
+            throw RuntimeProtocolError.runtimeFailure("Path does not exist: \(standardized)")
+        }
+        return standardized
     }
 
     private func clipboardImagePayload(data: Data, fallbackMime: String) throws -> [String: JSONValue] {
