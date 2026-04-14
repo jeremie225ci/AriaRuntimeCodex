@@ -304,7 +304,7 @@ final class MCPServer {
         switch toolName {
         case "aria_bootstrap", "runtime_health", "runtime_permissions", "desktop_list_windows", "read_clipboard", "read_clipboard_image", "copy_to_clipboard":
             return nil
-        case "system_open_application", "system_open_url", "desktop_focus_application", "desktop_focus_window", "reveal_path":
+        case "system_open_application", "system_open_url", "desktop_focus_application", "desktop_focus_window", "paste", "reveal_path":
             guard sessionState.bootstrapCount > 0 else {
                 return "Call aria_bootstrap before using navigation tools so Codex enters the Aria control loop."
             }
@@ -334,7 +334,7 @@ final class MCPServer {
         switch toolName {
         case "aria_bootstrap":
             sessionState.registerBootstrap(task: arguments["task"]?.stringValue)
-        case "system_open_application", "system_open_url", "desktop_focus_application", "desktop_focus_window", "reveal_path":
+        case "system_open_application", "system_open_url", "desktop_focus_application", "desktop_focus_window", "paste", "reveal_path":
             sessionState.markNavigation(tool: toolName)
         case "computer_snapshot":
             sessionState.markSnapshot()
@@ -354,6 +354,7 @@ final class MCPServer {
             || toolName == "system_open_url"
             || toolName == "desktop_focus_application"
             || toolName == "desktop_focus_window"
+            || toolName == "paste"
             || toolName == "reveal_path" {
             object["next_required_tool"] = .string("computer_snapshot")
         }

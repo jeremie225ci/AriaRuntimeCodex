@@ -291,6 +291,7 @@ enum SmokeRunner {
         try require(runtimeToolNames.contains("read_clipboard"), "runtime.tools includes read_clipboard")
         try require(runtimeToolNames.contains("read_clipboard_image"), "runtime.tools includes read_clipboard_image")
         try require(runtimeToolNames.contains("copy_to_clipboard"), "runtime.tools includes copy_to_clipboard")
+        try require(runtimeToolNames.contains("paste"), "runtime.tools includes paste")
         try require(runtimeToolNames.contains("reveal_path"), "runtime.tools includes reveal_path")
         pass("runtime.tools returned \(toolCount) tools")
 
@@ -410,6 +411,7 @@ enum SmokeRunner {
         try require(toolNames.contains("read_clipboard"), "MCP tools/list includes read_clipboard")
         try require(toolNames.contains("read_clipboard_image"), "MCP tools/list includes read_clipboard_image")
         try require(toolNames.contains("copy_to_clipboard"), "MCP tools/list includes copy_to_clipboard")
+        try require(toolNames.contains("paste"), "MCP tools/list includes paste")
         try require(toolNames.contains("reveal_path"), "MCP tools/list includes reveal_path")
         pass("MCP tools/list returned \(toolNames.count) tools")
 
@@ -454,6 +456,17 @@ enum SmokeRunner {
         let focusWindowBlockedStructured = try requireToolError(focusWindowBlockedBeforeBootstrap, context: "tools/call desktop_focus_window before bootstrap")
         try require(focusWindowBlockedStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "desktop_focus_window before bootstrap is rejected by Aria policy")
         pass("MCP policy blocks desktop_focus_window before aria_bootstrap")
+
+        let pasteBlockedBeforeBootstrap = try client.request(
+            method: "tools/call",
+            params: .object([
+                "name": .string("paste"),
+                "arguments": .object([:]),
+            ])
+        )
+        let pasteBlockedStructured = try requireToolError(pasteBlockedBeforeBootstrap, context: "tools/call paste before bootstrap")
+        try require(pasteBlockedStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "paste before bootstrap is rejected by Aria policy")
+        pass("MCP policy blocks paste before aria_bootstrap")
 
         let healthCall = try client.request(
             method: "tools/call",
@@ -634,6 +647,7 @@ enum SmokeRunner {
         try require(toolNames.contains("desktop_focus_window"), "JSONL tools/list includes desktop_focus_window")
         try require(toolNames.contains("read_clipboard"), "JSONL tools/list includes read_clipboard")
         try require(toolNames.contains("read_clipboard_image"), "JSONL tools/list includes read_clipboard_image")
+        try require(toolNames.contains("paste"), "JSONL tools/list includes paste")
         pass("JSONL tools/list returned \(toolNames.count) tools")
 
         let blockedBeforeBootstrap = try client.request(

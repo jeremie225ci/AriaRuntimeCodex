@@ -191,6 +191,11 @@ public final class MacOSRuntimeService: @unchecked Sendable {
                 ])
             ),
             ToolDescriptor(
+                name: "paste",
+                description: "Paste the current clipboard into the focused macOS app. Requires aria_bootstrap first. After pasting, call computer_snapshot before the next visual decision.",
+                inputSchema: .object([:])
+            ),
+            ToolDescriptor(
                 name: "reveal_path",
                 description: "Reveal an existing file or directory in Finder. Requires aria_bootstrap first. After Finder opens, call computer_snapshot before acting visually.",
                 inputSchema: .object([
@@ -304,6 +309,12 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             return .object([
                 "ok": .bool(true),
                 "length": .number(Double(text.count)),
+            ])
+        case "paste":
+            try pasteClipboard()
+            return .object([
+                "ok": .bool(true),
+                "next_step": .string("Call computer_snapshot before the next visual action."),
             ])
         case "reveal_path":
             let rawPath = try requiredString(arguments, key: "path")
@@ -1219,6 +1230,11 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             pasteboard.clearContents()
             pasteboard.setString(text, forType: .string)
         }
+    }
+
+    private func pasteClipboard() throws {
+        try ensureAccessibility()
+        try keyPress(["command", "v"])
     }
 
     private func clipboardImagePayload(data: Data, fallbackMime: String) throws -> [String: JSONValue] {
