@@ -17,8 +17,9 @@ final class AriaCodexProfileTests: XCTestCase {
         XCTAssertTrue(merged.contains(#"profile = "aria""#))
         XCTAssertTrue(merged.contains(#"[profiles.aria]"#))
         XCTAssertTrue(merged.contains(#"model_instructions_file = "/Users/test/.codex/aria-runtime/model_instructions.md""#))
-        XCTAssertTrue(merged.contains("open_world_enabled = false"))
-        XCTAssertTrue(merged.contains(#"disabled_tools = ["web_search", "tool_search"]"#))
+        XCTAssertTrue(merged.contains(#"web_search = "disabled""#))
+        XCTAssertTrue(merged.contains(#"[mcp_servers.aria-runtime]"#))
+        XCTAssertTrue(merged.contains(#"enabled_tools = ["runtime_health", "runtime_permissions", "aria_bootstrap", "system_open_application", "system_open_url", "computer_snapshot", "computer_action"]"#))
         XCTAssertTrue(merged.contains(#"[mcp_servers.aria-runtime.tools.computer_action]"#))
         XCTAssertTrue(merged.contains(#"approval_mode = "approve""#))
     }
@@ -30,8 +31,10 @@ final class AriaCodexProfileTests: XCTestCase {
 
             [profiles.aria]
             model_instructions_file = "/tmp/old.md"
-            open_world_enabled = true
-            disabled_tools = ["web_search"]
+            web_search = "live"
+
+            [mcp_servers.aria-runtime]
+            enabled_tools = ["read_clipboard"]
             """,
             modelInstructionsFile: "/Users/test/.codex/aria-runtime/model_instructions.md"
         )
@@ -40,7 +43,8 @@ final class AriaCodexProfileTests: XCTestCase {
         XCTAssertTrue(merged.contains(#"profile = "aria""#))
         XCTAssertFalse(merged.contains(#"profile = "custom""#))
         XCTAssertFalse(merged.contains(#"model_instructions_file = "/tmp/old.md""#))
-        XCTAssertTrue(merged.contains("open_world_enabled = false"))
+        XCTAssertTrue(merged.contains(#"web_search = "disabled""#))
+        XCTAssertTrue(merged.contains(#"enabled_tools = ["runtime_health", "runtime_permissions", "aria_bootstrap", "system_open_application", "system_open_url", "computer_snapshot", "computer_action"]"#))
     }
 
     func testRemovingProfileDropsDefaultProfileAndAriaSection() {
@@ -50,8 +54,7 @@ final class AriaCodexProfileTests: XCTestCase {
 
             [profiles.aria]
             model_instructions_file = "/tmp/aria.md"
-            open_world_enabled = false
-            disabled_tools = ["web_search", "tool_search"]
+            web_search = "disabled"
 
             [mcp_servers.aria-runtime]
             command = "/tmp/aria"

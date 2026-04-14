@@ -301,10 +301,26 @@ final class MCPServer {
     }
 
     private func policyViolation(toolName: String, arguments: [String: JSONValue]) -> String? {
+        if sessionState.bootstrapCount > 0 {
+            let allowedDuringVisualTask: Set<String> = [
+                "runtime_health",
+                "runtime_permissions",
+                "aria_bootstrap",
+                "system_open_application",
+                "system_open_url",
+                "computer_snapshot",
+                "computer_action",
+            ]
+
+            if !allowedDuringVisualTask.contains(toolName) {
+                return "After aria_bootstrap, this visual task is locked to Aria's canonical loop only: system_open_application or system_open_url for entry/navigation, then computer_snapshot and computer_action. Do not use \(toolName) for this visual task."
+            }
+        }
+
         switch toolName {
-        case "aria_bootstrap", "runtime_health", "runtime_permissions", "desktop_list_windows", "read_clipboard", "read_clipboard_image", "copy_to_clipboard":
+        case "aria_bootstrap", "runtime_health", "runtime_permissions":
             return nil
-        case "system_open_application", "system_open_url", "desktop_focus_application", "desktop_focus_window", "paste", "select_file_for_active_dialog", "upload_file_to_active_app", "reveal_path":
+        case "system_open_application", "system_open_url":
             guard sessionState.bootstrapCount > 0 else {
                 return "Call aria_bootstrap before using navigation tools so Codex enters the Aria control loop."
             }
@@ -325,6 +341,8 @@ final class MCPServer {
                 return nil
             }
             return nil
+        case "desktop_list_windows", "desktop_focus_application", "desktop_focus_window", "read_clipboard", "read_clipboard_image", "copy_to_clipboard", "paste", "select_file_for_active_dialog", "upload_file_to_active_app", "reveal_path":
+            return "This tool is not allowed inside Aria's locked visual loop. Use system_open_application or system_open_url to enter, then use computer_snapshot and computer_action one step at a time."
         default:
             return nil
         }
@@ -334,7 +352,7 @@ final class MCPServer {
         switch toolName {
         case "aria_bootstrap":
             sessionState.registerBootstrap(task: arguments["task"]?.stringValue)
-        case "system_open_application", "system_open_url", "desktop_focus_application", "desktop_focus_window", "paste", "select_file_for_active_dialog", "upload_file_to_active_app", "reveal_path":
+        case "system_open_application", "system_open_url":
             sessionState.markNavigation(tool: toolName)
         case "computer_snapshot":
             sessionState.markSnapshot()
@@ -351,13 +369,7 @@ final class MCPServer {
         if toolName == "aria_bootstrap" {
             object["next_required_tool"] = .string("computer_snapshot")
         } else if toolName == "system_open_application"
-            || toolName == "system_open_url"
-            || toolName == "desktop_focus_application"
-            || toolName == "desktop_focus_window"
-            || toolName == "paste"
-            || toolName == "select_file_for_active_dialog"
-            || toolName == "upload_file_to_active_app"
-            || toolName == "reveal_path" {
+            || toolName == "system_open_url" {
             object["next_required_tool"] = .string("computer_snapshot")
         }
         return .object(object)

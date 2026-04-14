@@ -3,29 +3,15 @@ import Foundation
 public enum AriaCodexProfile {
     public static let profileName = "aria"
     public static let serverName = "aria-runtime"
-    public static let disabledTools = [
-        "web_search",
-        "tool_search",
-    ]
-    public static let openWorldEnabled = false
-    public static let approvedMCPTools = [
+    public static let webSearchMode = "disabled"
+    public static let exposedMCPTools = [
         "runtime_health",
         "runtime_permissions",
         "aria_bootstrap",
-        "computer_snapshot",
-        "computer_action",
         "system_open_application",
         "system_open_url",
-        "desktop_list_windows",
-        "desktop_focus_application",
-        "desktop_focus_window",
-        "read_clipboard",
-        "read_clipboard_image",
-        "copy_to_clipboard",
-        "paste",
-        "reveal_path",
-        "select_file_for_active_dialog",
-        "upload_file_to_active_app",
+        "computer_snapshot",
+        "computer_action",
     ]
 
     public static func modelInstructionsText() -> String {
@@ -37,6 +23,7 @@ public enum AriaCodexProfile {
         Required behavior for visual tasks:
         - Call aria_bootstrap exactly once before the first visual action.
         - Stay inside the Aria loop for the rest of the visual task.
+        - After aria_bootstrap, use only these Aria tools for the visual task: system_open_application or system_open_url for entry/navigation, then computer_snapshot and computer_action.
         - Use computer_snapshot before the first visual action and after every navigation step.
         - Use computer_action for exactly one UI action at a time.
         - Inspect the returned screenshot after every action before deciding again.
@@ -49,6 +36,7 @@ public enum AriaCodexProfile {
         - Do not switch to out-of-band browsing or research flows for the same visual task once aria_bootstrap has started the loop.
         - Do not claim that a note was saved, text was typed, a draft exists, a scroll happened, or a form was completed unless the latest screenshot visibly proves it.
         - If a browser query or target URL is already known, prefer aria-runtime.system_open_url over address-bar typing.
+        - Do not use clipboard helpers, window helpers, or file-reveal helpers as a substitute for the computer loop during a visual task.
 
         Scope:
         - Code reasoning, repo navigation, editing, tests, and bug fixing remain normal Codex work.
@@ -74,12 +62,17 @@ public enum AriaCodexProfile {
             named: "profiles.\(profileName)",
             body: [
                 #"model_instructions_file = "\#(escapedTomlString(modelInstructionsFile))""#,
-                "open_world_enabled = \(openWorldEnabled ? "true" : "false")",
-                "disabled_tools = [\(disabledTools.map { #""\#($0)""# }.joined(separator: ", "))]",
+                #"web_search = "\#(webSearchMode)""#,
             ]
         )
+        config = replacingAssignment(
+            in: config,
+            sectionName: "mcp_servers.\(serverName)",
+            key: "enabled_tools",
+            with: "enabled_tools = [\(exposedMCPTools.map { #""\#($0)""# }.joined(separator: ", "))]"
+        )
 
-        for tool in approvedMCPTools {
+        for tool in exposedMCPTools {
             config = replacingSection(
                 in: config,
                 named: "mcp_servers.\(serverName).tools.\(tool)",
@@ -103,8 +96,8 @@ public enum AriaCodexProfile {
         let lines = normalizedLines(from: config)
         return containsTopLevelKeyValue(in: lines, key: "profile", value: profileName)
             && section(named: "profiles.\(profileName)", in: lines).contains(#"model_instructions_file = "\#(escapedTomlString(modelInstructionsFile))""#)
-            && section(named: "profiles.\(profileName)", in: lines).contains("open_world_enabled = \(openWorldEnabled ? "true" : "false")")
-            && section(named: "profiles.\(profileName)", in: lines).contains("disabled_tools = [\(disabledTools.map { #""\#($0)""# }.joined(separator: ", "))]")
+            && section(named: "profiles.\(profileName)", in: lines).contains(#"web_search = "\#(webSearchMode)""#)
+            && section(named: "mcp_servers.\(serverName)", in: lines).contains("enabled_tools = [\(exposedMCPTools.map { #""\#($0)""# }.joined(separator: ", "))]")
     }
 
     private static func normalizedLines(from text: String) -> [String] {
@@ -190,6 +183,63 @@ public enum AriaCodexProfile {
         }
         output.append("[\(sectionName)]")
         output.append(contentsOf: body)
+        return output
+    }
+
+    private static func replacingAssignment(in lines: [String], sectionName: String, key: String, with assignment: String) -> [String] {
+        let header = "[\(sectionName)]"
+        var output: [String] = []
+        var index = 0
+        var sectionFound = false
+
+        while index < lines.count {
+            let trimmed = lines[index].trimmingCharacters(in: .whitespaces)
+            if trimmed == header {
+                sectionFound = true
+                output.append(lines[index])
+                index += 1
+
+                var sectionBody: [String] = []
+                var replaced = false
+                while index < lines.count && !isSectionHeader(lines[index].trimmingCharacters(in: .whitespaces)) {
+                    let current = lines[index]
+                    let currentTrimmed = current.trimmingCharacters(in: .whitespaces)
+                    if isAssignment(currentTrimmed, key: key) {
+                        if !replaced {
+                            sectionBody.append(assignment)
+                            replaced = true
+                        }
+                    } else {
+                        sectionBody.append(current)
+                    }
+                    index += 1
+                }
+
+                if !replaced {
+                    trimTrailingBlankLines(from: &sectionBody)
+                    if !sectionBody.isEmpty {
+                        sectionBody.append("")
+                    }
+                    sectionBody.append(assignment)
+                }
+
+                output.append(contentsOf: sectionBody)
+                continue
+            }
+
+            output.append(lines[index])
+            index += 1
+        }
+
+        if !sectionFound {
+            trimTrailingBlankLines(from: &output)
+            if !output.isEmpty {
+                output.append("")
+            }
+            output.append(header)
+            output.append(assignment)
+        }
+
         return output
     }
 

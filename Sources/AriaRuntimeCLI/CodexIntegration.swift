@@ -165,8 +165,8 @@ enum CodexIntegration {
             "config_path": .string(configURL.path),
             "instructions_path": .string(instructionsURL.path),
             "instructions_file_exists": .bool(fileManager.fileExists(atPath: instructionsURL.path)),
-            "disabled_tools": .array(AriaCodexProfile.disabledTools.map(JSONValue.string)),
-            "open_world_enabled": .bool(AriaCodexProfile.openWorldEnabled),
+            "web_search": .string(AriaCodexProfile.webSearchMode),
+            "enabled_mcp_tools": .array(AriaCodexProfile.exposedMCPTools.map(JSONValue.string)),
             "installed": .bool(AriaCodexProfile.profileInstalled(in: existing, modelInstructionsFile: instructionsURL.path)),
         ]
     }

@@ -3,6 +3,8 @@ import Foundation
 public enum AriaControlPlane {
     public static let canonicalVisualTools = [
         "aria_bootstrap",
+        "system_open_application",
+        "system_open_url",
         "computer_snapshot",
         "computer_action",
     ]
@@ -10,6 +12,7 @@ public enum AriaControlPlane {
     public static let visualLoopRules = [
         "Call aria_bootstrap exactly once at the start of every visual or UI task.",
         "Use system_open_application or system_open_url only to enter the target app or site before the visual loop.",
+        "Once the visual loop has started, do not switch to clipboard helpers, window-inspection helpers, DOM helpers, or out-of-band research as a substitute for computer use.",
         "For browser navigation or search where the query or destination is already known, prefer system_open_url over typing into the address bar.",
         "Capture the screen with computer_snapshot before the first UI action.",
         "Execute exactly one UI action per computer_action call.",
@@ -30,6 +33,7 @@ public enum AriaControlPlane {
         "Do not guess stale coordinates without a fresh screenshot.",
         "Do not claim a button was clicked or a form was submitted without post-action confirmation.",
         "Do not treat clipboard contents as proof of page contents unless the latest screenshot proves that the copied selection is the relevant on-screen content.",
+        "Do not use window lists, focus helpers, clipboard helpers, or reveal_path to replace computer use during a visual task.",
     ]
 
     public static let sensitiveActionRules = [
@@ -40,7 +44,7 @@ public enum AriaControlPlane {
 
     public static let nonAriaResearchRules = [
         "After aria_bootstrap, do not switch to generic web search tools, external browsing tools, or out-of-band research flows for the same visual task.",
-        "If the task is happening in Safari, Chrome, Notes, Gmail, Finder, or another visible app, keep the task inside that app using Aria tools plus deterministic desktop helpers.",
+        "If the task is happening in Safari, Chrome, Notes, Gmail, Finder, or another visible app, keep the task inside that app using Aria's canonical visual tools only.",
         "Do not use a non-Aria search result as proof that something exists on screen. Visible proof must still come from the returned screenshot.",
         "If the task starts in Safari or another browser, continue solving it inside that browser instead of jumping to a native search flow outside Aria.",
     ]
@@ -75,8 +79,7 @@ public enum AriaControlPlane {
         6. Require explicit user confirmation before send, submit, delete, purchase, publish, or irreversible actions.
         7. Do not claim completion unless the latest screenshot proves it.
 
-        For visual tasks, do not use DOM inspection, Safari JavaScript from Apple Events, AppleScript UI scraping, generic web search tools, or out-of-band browsing as the primary strategy once Aria has taken control. Aria's canonical visual tools are aria_bootstrap, computer_snapshot, and computer_action.
-        Specialized desktop helpers may be used when they are more deterministic than raw UI clicks: desktop_list_windows, desktop_focus_application, desktop_focus_window, read_clipboard, read_clipboard_image, copy_to_clipboard, paste, select_file_for_active_dialog, upload_file_to_active_app, and reveal_path.
+        For visual tasks, do not use DOM inspection, Safari JavaScript from Apple Events, AppleScript UI scraping, generic web search tools, out-of-band browsing, clipboard extraction, or window inspection as the primary strategy once Aria has taken control. Aria's canonical visual tools are aria_bootstrap, system_open_application, system_open_url, computer_snapshot, and computer_action.
         For browser navigation and search tasks, prefer system_open_url when the destination URL or query is already known.
         """
 
@@ -110,6 +113,7 @@ public enum AriaControlPlane {
         Mandatory rules:
         - After aria_bootstrap, reset out of free-form Codex behavior and follow Aria's method for the whole visual task.
         - Call aria_bootstrap once at the beginning of each visual task.
+        - Use only the canonical Aria visual tools for the visual task: system_open_application or system_open_url for entry/navigation, computer_snapshot, and computer_action.
         - Use computer_snapshot before the first UI action.
         - Use exactly one computer_action per cycle.
         - Inspect the returned screenshot before deciding again.
@@ -132,13 +136,7 @@ public enum AriaControlPlane {
 
         These require explicit user confirmation.
 
-        Specialized helpers:
-        - desktop_list_windows for window discovery
-        - desktop_focus_application before a fresh snapshot
-        - desktop_focus_window when a specific title or app window matters
-        - read_clipboard, read_clipboard_image, copy_to_clipboard, and paste for deterministic clipboard work
-        - select_file_for_active_dialog and upload_file_to_active_app for standard macOS open/upload dialogs
-        - reveal_path to open Finder to a known file or directory
+        During a visual task, do not use auxiliary helpers such as window lists, focus helpers, clipboard helpers, file-dialog helpers, or reveal_path as a substitute for the computer loop.
         """
     }
 
@@ -164,17 +162,7 @@ public enum AriaControlPlane {
         - move x/y
         - drag path[]
 
-        Specialized helpers:
-        - desktop_list_windows
-        - desktop_focus_application
-        - desktop_focus_window
-        - read_clipboard
-        - read_clipboard_image
-        - copy_to_clipboard
-        - paste
-        - select_file_for_active_dialog
-        - upload_file_to_active_app
-        - reveal_path
+        During a visual task, do not leave this workflow for auxiliary helpers. Stay in the loop.
         """
     }
 
@@ -204,6 +192,7 @@ public enum AriaControlPlane {
         Follow the Aria control loop:
         - Call aria_bootstrap first.
         - For visual tasks, do not use DOM inspection, browser JavaScript, generic web search tools, or out-of-band browsing once Aria has taken control.
+        - For visual tasks, use only system_open_application or system_open_url for entry/navigation, then computer_snapshot and computer_action. Do not switch to clipboard or window helper tools.
         - For browser navigation and search where the destination or query is already known, prefer system_open_url over address-bar typing.
         - Use computer_snapshot to observe the UI.
         - Use computer_action for exactly one UI action at a time.

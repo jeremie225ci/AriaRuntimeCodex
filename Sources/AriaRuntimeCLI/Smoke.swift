@@ -507,27 +507,27 @@ enum SmokeRunner {
         let permissionsStructured = try requireStructuredContent(permissionsCall, context: "tools/call runtime_permissions")
         pass("MCP runtime_permissions tool call succeeded")
 
-        let windowsCall = try client.request(
+        let windowsBlockedBeforeBootstrap = try client.request(
             method: "tools/call",
             params: .object([
                 "name": .string("desktop_list_windows"),
                 "arguments": .object([:]),
             ])
         )
-        let windowsStructured = try requireStructuredContent(windowsCall, context: "tools/call desktop_list_windows")
-        try require(windowsStructured["windows"]?.arrayValue != nil, "desktop_list_windows via MCP returned a windows array")
-        pass("MCP desktop_list_windows tool call succeeded")
+        let windowsBlockedStructured = try requireToolError(windowsBlockedBeforeBootstrap, context: "tools/call desktop_list_windows before bootstrap")
+        try require(windowsBlockedStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "desktop_list_windows before bootstrap is rejected by Aria policy")
+        pass("MCP policy blocks desktop_list_windows before aria_bootstrap")
 
-        let clipboardCall = try client.request(
+        let clipboardBlockedBeforeBootstrap = try client.request(
             method: "tools/call",
             params: .object([
                 "name": .string("read_clipboard"),
                 "arguments": .object([:]),
             ])
         )
-        let clipboardStructured = try requireStructuredContent(clipboardCall, context: "tools/call read_clipboard")
-        try require(clipboardStructured["text"]?.stringValue != nil, "read_clipboard via MCP returned clipboard text")
-        pass("MCP read_clipboard tool call succeeded")
+        let clipboardBlockedStructured = try requireToolError(clipboardBlockedBeforeBootstrap, context: "tools/call read_clipboard before bootstrap")
+        try require(clipboardBlockedStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "read_clipboard before bootstrap is rejected by Aria policy")
+        pass("MCP policy blocks read_clipboard before aria_bootstrap")
 
         let bootstrapCall = try client.request(
             method: "tools/call",
@@ -538,11 +538,23 @@ enum SmokeRunner {
         )
         let bootstrapStructured = try requireStructuredContent(bootstrapCall, context: "tools/call aria_bootstrap")
         try require((bootstrapStructured["canonical_visual_tools"]?.arrayValue ?? []).contains(.string("computer_snapshot")), "aria_bootstrap returned canonical visual tools")
+        try require((bootstrapStructured["canonical_visual_tools"]?.arrayValue ?? []).contains(.string("system_open_url")), "aria_bootstrap returned system_open_url as canonical visual tool")
         try require(bootstrapStructured["session"]?["bootstrap_count"]?.intValue == 1, "aria_bootstrap returned session state")
         try require(bootstrapStructured["locked_mode"]?.boolValue == true, "aria_bootstrap returned locked_mode")
         try require((bootstrapStructured["reset_rules"]?.arrayValue ?? []).isEmpty == false, "aria_bootstrap returned reset rules")
         try require((bootstrapStructured["completion_proof_rules"]?.arrayValue ?? []).isEmpty == false, "aria_bootstrap returned completion proof rules")
         pass("MCP aria_bootstrap tool call succeeded")
+
+        let blockedHelperAfterBootstrap = try client.request(
+            method: "tools/call",
+            params: .object([
+                "name": .string("read_clipboard"),
+                "arguments": .object([:]),
+            ])
+        )
+        let blockedHelperStructured = try requireToolError(blockedHelperAfterBootstrap, context: "tools/call read_clipboard after bootstrap")
+        try require(blockedHelperStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "helper tools are blocked after aria_bootstrap inside the visual loop")
+        pass("MCP policy blocks helper tools after aria_bootstrap")
 
         let blockedBeforeSnapshot = try client.request(
             method: "tools/call",
