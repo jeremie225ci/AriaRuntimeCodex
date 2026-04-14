@@ -287,6 +287,7 @@ enum SmokeRunner {
         try require(toolCount >= 10, "runtime.tools returned at least ten tools")
         try require(runtimeToolNames.contains("desktop_list_windows"), "runtime.tools includes desktop_list_windows")
         try require(runtimeToolNames.contains("desktop_focus_application"), "runtime.tools includes desktop_focus_application")
+        try require(runtimeToolNames.contains("desktop_focus_window"), "runtime.tools includes desktop_focus_window")
         try require(runtimeToolNames.contains("read_clipboard"), "runtime.tools includes read_clipboard")
         try require(runtimeToolNames.contains("read_clipboard_image"), "runtime.tools includes read_clipboard_image")
         try require(runtimeToolNames.contains("copy_to_clipboard"), "runtime.tools includes copy_to_clipboard")
@@ -405,6 +406,7 @@ enum SmokeRunner {
         try require(toolNames.contains("computer_action"), "MCP tools/list includes computer_action")
         try require(toolNames.contains("desktop_list_windows"), "MCP tools/list includes desktop_list_windows")
         try require(toolNames.contains("desktop_focus_application"), "MCP tools/list includes desktop_focus_application")
+        try require(toolNames.contains("desktop_focus_window"), "MCP tools/list includes desktop_focus_window")
         try require(toolNames.contains("read_clipboard"), "MCP tools/list includes read_clipboard")
         try require(toolNames.contains("read_clipboard_image"), "MCP tools/list includes read_clipboard_image")
         try require(toolNames.contains("copy_to_clipboard"), "MCP tools/list includes copy_to_clipboard")
@@ -439,6 +441,19 @@ enum SmokeRunner {
         let focusBlockedStructured = try requireToolError(focusBlockedBeforeBootstrap, context: "tools/call desktop_focus_application before bootstrap")
         try require(focusBlockedStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "desktop_focus_application before bootstrap is rejected by Aria policy")
         pass("MCP policy blocks desktop_focus_application before aria_bootstrap")
+
+        let focusWindowBlockedBeforeBootstrap = try client.request(
+            method: "tools/call",
+            params: .object([
+                "name": .string("desktop_focus_window"),
+                "arguments": .object([
+                    "title": .string("Safari"),
+                ]),
+            ])
+        )
+        let focusWindowBlockedStructured = try requireToolError(focusWindowBlockedBeforeBootstrap, context: "tools/call desktop_focus_window before bootstrap")
+        try require(focusWindowBlockedStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "desktop_focus_window before bootstrap is rejected by Aria policy")
+        pass("MCP policy blocks desktop_focus_window before aria_bootstrap")
 
         let healthCall = try client.request(
             method: "tools/call",
@@ -616,6 +631,7 @@ enum SmokeRunner {
         try require(toolNames.contains("runtime_health"), "JSONL tools/list includes runtime_health")
         try require(toolNames.contains("computer_snapshot"), "JSONL tools/list includes computer_snapshot")
         try require(toolNames.contains("desktop_list_windows"), "JSONL tools/list includes desktop_list_windows")
+        try require(toolNames.contains("desktop_focus_window"), "JSONL tools/list includes desktop_focus_window")
         try require(toolNames.contains("read_clipboard"), "JSONL tools/list includes read_clipboard")
         try require(toolNames.contains("read_clipboard_image"), "JSONL tools/list includes read_clipboard_image")
         pass("JSONL tools/list returned \(toolNames.count) tools")

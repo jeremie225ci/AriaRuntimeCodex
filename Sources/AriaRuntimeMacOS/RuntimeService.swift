@@ -157,6 +157,19 @@ public final class MacOSRuntimeService: @unchecked Sendable {
                 ])
             ),
             ToolDescriptor(
+                name: "desktop_focus_window",
+                description: "Focus a visible macOS window by title and optional owner name. Requires aria_bootstrap first. After focusing, call computer_snapshot before acting visually.",
+                inputSchema: .object([
+                    "type": .string("object"),
+                    "properties": .object([
+                        "title": .object(["type": .string("string")]),
+                        "owner_name": .object(["type": .string("string")]),
+                        "bundle_id": .object(["type": .string("string")]),
+                        "query": .object(["type": .string("string")]),
+                    ]),
+                ])
+            ),
+            ToolDescriptor(
                 name: "read_clipboard",
                 description: "Read the current macOS text clipboard.",
                 inputSchema: .object([:])
@@ -271,6 +284,16 @@ public final class MacOSRuntimeService: @unchecked Sendable {
                 "application": .string(descriptor),
                 "next_step": .string("Call computer_snapshot before the next visual action."),
             ])
+        case "desktop_focus_window":
+            let focused = try focusWindow(arguments: arguments)
+            var payload: [String: JSONValue] = [
+                "ok": .bool(true),
+                "next_step": .string("Call computer_snapshot before the next visual action."),
+            ]
+            for (key, value) in focused {
+                payload[key] = value
+            }
+            return .object(payload)
         case "read_clipboard":
             return try readClipboard()
         case "read_clipboard_image":
@@ -800,38 +823,49 @@ public final class MacOSRuntimeService: @unchecked Sendable {
     }
 
     private func listWindows() -> JSONValue {
+        .object(["windows": .array(visibleWindows().map(windowPayload(from:)))])
+    }
+
+    private func visibleWindowEntries() -> [[String: Any]] {
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-        let windowInfo = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
-        let windows = windowInfo.compactMap { entry -> JSONValue? in
+        return CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] ?? []
+    }
+
+    private func visibleWindows() -> [[String: Any]] {
+        visibleWindowEntries().filter { entry in
             guard
                 let bounds = entry[kCGWindowBounds as String] as? [String: Any],
-                let x = bounds["X"] as? Double,
-                let y = bounds["Y"] as? Double,
                 let width = bounds["Width"] as? Double,
                 let height = bounds["Height"] as? Double
             else {
-                return nil
+                return false
             }
             let alpha = entry[kCGWindowAlpha as String] as? Double ?? 1
             let layer = entry[kCGWindowLayer as String] as? Int ?? 0
-            if alpha <= 0 || width <= 0 || height <= 0 || layer < 0 {
-                return nil
-            }
-            return .object([
-                "window_id": .number(Double(entry[kCGWindowNumber as String] as? Int ?? 0)),
-                "owner_name": .string(entry[kCGWindowOwnerName as String] as? String ?? ""),
-                "window_name": .string(entry[kCGWindowName as String] as? String ?? ""),
-                "bounds": .object([
-                    "x": .number(x),
-                    "y": .number(y),
-                    "width": .number(width),
-                    "height": .number(height),
-                ]),
-                "layer": .number(Double(layer)),
-                "pid": .number(Double(entry[kCGWindowOwnerPID as String] as? Int ?? 0)),
-            ])
+            return alpha > 0 && width > 0 && height > 0 && layer >= 0
         }
-        return .object(["windows": .array(windows)])
+    }
+
+    private func windowPayload(from entry: [String: Any]) -> JSONValue {
+        let bounds = entry[kCGWindowBounds as String] as? [String: Any] ?? [:]
+        let x = bounds["X"] as? Double ?? 0
+        let y = bounds["Y"] as? Double ?? 0
+        let width = bounds["Width"] as? Double ?? 0
+        let height = bounds["Height"] as? Double ?? 0
+        let layer = entry[kCGWindowLayer as String] as? Int ?? 0
+        return .object([
+            "window_id": .number(Double(entry[kCGWindowNumber as String] as? Int ?? 0)),
+            "owner_name": .string(entry[kCGWindowOwnerName as String] as? String ?? ""),
+            "window_name": .string(entry[kCGWindowName as String] as? String ?? ""),
+            "bounds": .object([
+                "x": .number(x),
+                "y": .number(y),
+                "width": .number(width),
+                "height": .number(height),
+            ]),
+            "layer": .number(Double(layer)),
+            "pid": .number(Double(entry[kCGWindowOwnerPID as String] as? Int ?? 0)),
+        ])
     }
 
     private func focusApplication(arguments: [String: JSONValue]) throws {
@@ -860,6 +894,176 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         guard activated else {
             throw RuntimeProtocolError.runtimeFailure("Application activation was rejected by macOS.")
         }
+    }
+
+    private func focusWindow(arguments: [String: JSONValue]) throws -> [String: JSONValue] {
+        try ensureAccessibility()
+
+        let titleQuery = (
+            arguments["title"]?.stringValue
+            ?? arguments["query"]?.stringValue
+            ?? ""
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+        let ownerQuery = (arguments["owner_name"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let bundleIdentifier = (arguments["bundle_id"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !titleQuery.isEmpty || !ownerQuery.isEmpty || !bundleIdentifier.isEmpty else {
+            throw RuntimeProtocolError.invalidParameters("desktop_focus_window requires title, query, owner_name, or bundle_id")
+        }
+
+        let candidate = try resolveWindowCandidate(
+            titleQuery: titleQuery,
+            ownerQuery: ownerQuery,
+            bundleIdentifier: bundleIdentifier
+        )
+
+        let app = NSRunningApplication(processIdentifier: pid_t(candidate.pid))
+        guard let app else {
+            throw RuntimeProtocolError.runtimeFailure("Unable to resolve running app for pid \(candidate.pid).")
+        }
+
+        let activated = try runOnMain {
+            app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        }
+        guard activated else {
+            throw RuntimeProtocolError.runtimeFailure("Application activation was rejected by macOS.")
+        }
+
+        let appElement = AXUIElementCreateApplication(pid_t(candidate.pid))
+        let focusedByAX = focusAXWindow(
+            appElement: appElement,
+            titleQuery: titleQuery,
+            fallbackTitle: candidate.windowName
+        )
+
+        return [
+            "window_id": .number(Double(candidate.windowID)),
+            "owner_name": .string(candidate.ownerName),
+            "window_name": .string(candidate.windowName),
+            "pid": .number(Double(candidate.pid)),
+            "focused_via_accessibility": .bool(focusedByAX),
+        ]
+    }
+
+    private func resolveWindowCandidate(titleQuery: String, ownerQuery: String, bundleIdentifier: String) throws -> (windowID: Int, pid: Int, ownerName: String, windowName: String) {
+        let allowedPIDs: Set<Int>? = bundleIdentifier.isEmpty ? nil : Set(
+            NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).map { Int($0.processIdentifier) }
+        )
+        if bundleIdentifier.isEmpty == false, allowedPIDs?.isEmpty == true {
+            throw RuntimeProtocolError.runtimeFailure("No running app matches bundle id \(bundleIdentifier).")
+        }
+
+        let titleNeedle = titleQuery.lowercased()
+        let ownerNeedle = ownerQuery.lowercased()
+        let windows = visibleWindows()
+
+        var bestMatch: (score: Int, entry: [String: Any])?
+        for entry in windows {
+            let pid = entry[kCGWindowOwnerPID as String] as? Int ?? 0
+            if let allowedPIDs, allowedPIDs.contains(pid) == false {
+                continue
+            }
+
+            let ownerName = (entry[kCGWindowOwnerName as String] as? String ?? "")
+            let windowName = (entry[kCGWindowName as String] as? String ?? "")
+            let ownerLower = ownerName.lowercased()
+            let windowLower = windowName.lowercased()
+
+            var score = 0
+            if titleNeedle.isEmpty == false {
+                if windowLower == titleNeedle {
+                    score += 8
+                } else if windowLower.contains(titleNeedle) {
+                    score += 5
+                } else {
+                    continue
+                }
+            }
+
+            if ownerNeedle.isEmpty == false {
+                if ownerLower == ownerNeedle {
+                    score += 4
+                } else if ownerLower.contains(ownerNeedle) {
+                    score += 2
+                } else {
+                    continue
+                }
+            }
+
+            if titleNeedle.isEmpty && ownerNeedle.isEmpty && allowedPIDs != nil {
+                score += 1
+            }
+
+            if bestMatch == nil || score > bestMatch?.score ?? Int.min {
+                bestMatch = (score, entry)
+            }
+        }
+
+        guard let entry = bestMatch?.entry else {
+            throw RuntimeProtocolError.runtimeFailure("No visible window matched the requested title/app query.")
+        }
+
+        return (
+            windowID: entry[kCGWindowNumber as String] as? Int ?? 0,
+            pid: entry[kCGWindowOwnerPID as String] as? Int ?? 0,
+            ownerName: entry[kCGWindowOwnerName as String] as? String ?? "",
+            windowName: entry[kCGWindowName as String] as? String ?? ""
+        )
+    }
+
+    private func focusAXWindow(appElement: AXUIElement, titleQuery: String, fallbackTitle: String) -> Bool {
+        let windows = axWindows(for: appElement)
+        if windows.isEmpty {
+            return false
+        }
+
+        let desired = titleQuery.isEmpty ? fallbackTitle.lowercased() : titleQuery.lowercased()
+        let target = windows.first { window in
+            guard desired.isEmpty == false else { return true }
+            let title = axString(for: window, attribute: kAXTitleAttribute as CFString).lowercased()
+            return title == desired || title.contains(desired)
+        } ?? windows.first
+
+        guard let target else {
+            return false
+        }
+
+        var focused = false
+        let raiseResult = AXUIElementPerformAction(target, kAXRaiseAction as CFString)
+        focused = focused || raiseResult == .success
+        let mainResult = AXUIElementSetAttributeValue(target, kAXMainAttribute as CFString, kCFBooleanTrue)
+        focused = focused || mainResult == .success
+        let focusResult = AXUIElementSetAttributeValue(target, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        focused = focused || focusResult == .success
+        let focusedWindowResult = AXUIElementSetAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, target)
+        focused = focused || focusedWindowResult == .success
+        return focused
+    }
+
+    private func axWindows(for appElement: AXUIElement) -> [AXUIElement] {
+        guard let value = axValue(for: appElement, attribute: kAXWindowsAttribute as CFString) else {
+            return []
+        }
+        if let windows = value as? [AXUIElement] {
+            return windows
+        }
+        if let array = value as? [Any] {
+            return array.map { $0 as! AXUIElement }
+        }
+        return []
+    }
+
+    private func axString(for element: AXUIElement, attribute: CFString) -> String {
+        (axValue(for: element, attribute: attribute) as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func axValue(for element: AXUIElement, attribute: CFString) -> CFTypeRef? {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, attribute, &value)
+        guard result == .success else {
+            return nil
+        }
+        return value
     }
 
     private func openApplication(arguments: [String: JSONValue]) throws -> String {

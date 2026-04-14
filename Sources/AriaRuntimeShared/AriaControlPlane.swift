@@ -51,7 +51,7 @@ public enum AriaControlPlane {
     6. Require explicit user confirmation before send, submit, delete, purchase, publish, or irreversible actions.
 
     For visual tasks, do not use DOM inspection, Safari JavaScript from Apple Events, or AppleScript UI scraping as the primary strategy. Aria's canonical visual tools are aria_bootstrap, computer_snapshot, and computer_action.
-    Specialized desktop helpers may be used when they are more deterministic than raw UI clicks: desktop_list_windows, desktop_focus_application, read_clipboard, read_clipboard_image, copy_to_clipboard, and reveal_path.
+    Specialized desktop helpers may be used when they are more deterministic than raw UI clicks: desktop_list_windows, desktop_focus_application, desktop_focus_window, read_clipboard, read_clipboard_image, copy_to_clipboard, and reveal_path.
     """
 
     public static func bootstrapPayload(version: String, permissions: [String: JSONValue], availableTools: [String]) -> JSONValue {
@@ -102,6 +102,7 @@ public enum AriaControlPlane {
         Specialized helpers:
         - desktop_list_windows for window discovery
         - desktop_focus_application before a fresh snapshot
+        - desktop_focus_window when a specific title or app window matters
         - read_clipboard, read_clipboard_image, and copy_to_clipboard for deterministic clipboard work
         - reveal_path to open Finder to a known file or directory
         """
@@ -131,6 +132,7 @@ public enum AriaControlPlane {
         Specialized helpers:
         - desktop_list_windows
         - desktop_focus_application
+        - desktop_focus_window
         - read_clipboard
         - read_clipboard_image
         - copy_to_clipboard
