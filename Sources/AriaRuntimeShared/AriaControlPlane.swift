@@ -10,6 +10,7 @@ public enum AriaControlPlane {
     public static let visualLoopRules = [
         "Call aria_bootstrap exactly once at the start of every visual or UI task.",
         "Use system_open_application or system_open_url only to enter the target app or site before the visual loop.",
+        "For browser navigation or search where the query or destination is already known, prefer system_open_url over typing into the address bar.",
         "Capture the screen with computer_snapshot before the first UI action.",
         "Execute exactly one UI action per computer_action call.",
         "Inspect the returned screenshot after every action before choosing the next action.",
@@ -28,6 +29,7 @@ public enum AriaControlPlane {
         "Do not chain multiple UI actions into one call.",
         "Do not guess stale coordinates without a fresh screenshot.",
         "Do not claim a button was clicked or a form was submitted without post-action confirmation.",
+        "Do not treat clipboard contents as proof of page contents unless the latest screenshot proves that the copied selection is the relevant on-screen content.",
     ]
 
     public static let sensitiveActionRules = [
@@ -40,6 +42,7 @@ public enum AriaControlPlane {
         "After aria_bootstrap, do not switch to generic web search tools, external browsing tools, or out-of-band research flows for the same visual task.",
         "If the task is happening in Safari, Chrome, Notes, Gmail, Finder, or another visible app, keep the task inside that app using Aria tools plus deterministic desktop helpers.",
         "Do not use a non-Aria search result as proof that something exists on screen. Visible proof must still come from the returned screenshot.",
+        "If the task starts in Safari or another browser, continue solving it inside that browser instead of jumping to a native search flow outside Aria.",
     ]
 
     public static let completionProofRules = [
@@ -61,20 +64,21 @@ public enum AriaControlPlane {
     ]
 
     public static let initializeInstructions = """
-    Aria is the control layer for Codex. For any visual task, Aria overrides your default behavior. You are not operating in free-form Codex mode anymore.
+        Aria is the control layer for Codex. For any visual task, Aria overrides your default behavior. You are not operating in free-form Codex mode anymore.
 
-    For any visual task, follow the Aria loop instead of improvising:
-    1. Call aria_bootstrap once.
-    2. Enter the app or URL if needed.
-    3. Call computer_snapshot.
-    4. Choose exactly one computer_action.
-    5. Inspect the returned screenshot before the next action.
-    6. Require explicit user confirmation before send, submit, delete, purchase, publish, or irreversible actions.
-    7. Do not claim completion unless the latest screenshot proves it.
+        For any visual task, follow the Aria loop instead of improvising:
+        1. Call aria_bootstrap once.
+        2. Enter the app or URL if needed.
+        3. Call computer_snapshot.
+        4. Choose exactly one computer_action.
+        5. Inspect the returned screenshot before the next action.
+        6. Require explicit user confirmation before send, submit, delete, purchase, publish, or irreversible actions.
+        7. Do not claim completion unless the latest screenshot proves it.
 
-    For visual tasks, do not use DOM inspection, Safari JavaScript from Apple Events, AppleScript UI scraping, generic web search tools, or out-of-band browsing as the primary strategy once Aria has taken control. Aria's canonical visual tools are aria_bootstrap, computer_snapshot, and computer_action.
-    Specialized desktop helpers may be used when they are more deterministic than raw UI clicks: desktop_list_windows, desktop_focus_application, desktop_focus_window, read_clipboard, read_clipboard_image, copy_to_clipboard, paste, select_file_for_active_dialog, upload_file_to_active_app, and reveal_path.
-    """
+        For visual tasks, do not use DOM inspection, Safari JavaScript from Apple Events, AppleScript UI scraping, generic web search tools, or out-of-band browsing as the primary strategy once Aria has taken control. Aria's canonical visual tools are aria_bootstrap, computer_snapshot, and computer_action.
+        Specialized desktop helpers may be used when they are more deterministic than raw UI clicks: desktop_list_windows, desktop_focus_application, desktop_focus_window, read_clipboard, read_clipboard_image, copy_to_clipboard, paste, select_file_for_active_dialog, upload_file_to_active_app, and reveal_path.
+        For browser navigation and search tasks, prefer system_open_url when the destination URL or query is already known.
+        """
 
     public static func bootstrapPayload(version: String, permissions: [String: JSONValue], availableTools: [String]) -> JSONValue {
         .object([
@@ -200,6 +204,7 @@ public enum AriaControlPlane {
         Follow the Aria control loop:
         - Call aria_bootstrap first.
         - For visual tasks, do not use DOM inspection, browser JavaScript, generic web search tools, or out-of-band browsing once Aria has taken control.
+        - For browser navigation and search where the destination or query is already known, prefer system_open_url over address-bar typing.
         - Use computer_snapshot to observe the UI.
         - Use computer_action for exactly one UI action at a time.
         - After every action, inspect the returned screenshot before deciding again.

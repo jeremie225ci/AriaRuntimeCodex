@@ -395,12 +395,15 @@ public final class MacOSRuntimeService: @unchecked Sendable {
     private func computerAction(arguments: [String: JSONValue]) throws -> JSONValue {
         let action = try requiredObject(arguments, key: "action")
         let actionType = try requiredString(action, key: "type")
+        let goal = arguments["goal"]?.stringValue
         let beforeFrame = try captureScreen()
         let executedAction = try executeComputerAction(action)
         settleAfterAction(actionType)
         let afterFrame = try captureScreen()
         let verification = try verifyVisualOutcome(
             actionType: actionType,
+            action: action,
+            goal: goal,
             before: beforeFrame.image,
             after: afterFrame.image
         )
@@ -415,7 +418,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         payload["non_aria_research_rules"] = .array(AriaControlPlane.nonAriaResearchRules.map(JSONValue.string))
         payload["completion_proof_rules"] = .array(AriaControlPlane.completionProofRules.map(JSONValue.string))
         payload["visual_confirmation"] = verification.payload()
-        if let goal = arguments["goal"]?.stringValue, !goal.isEmpty {
+        if let goal, !goal.isEmpty {
             payload["goal"] = .string(goal)
         }
         if verification.required && !verification.confirmed {
@@ -684,9 +687,12 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         }
     }
 
-    private func verifyVisualOutcome(actionType: String, before: CGImage, after: CGImage) throws -> VisualVerificationResult {
+    private func verifyVisualOutcome(actionType: String, action: [String: JSONValue], goal: String?, before: CGImage, after: CGImage) throws -> VisualVerificationResult {
         let requirement = verificationRequirement(for: actionType)
-        if !requirement.required {
+        let shouldRequireVisibleChange = requirement.requiredByDefault || goalRequiresVisibleChange(actionType: actionType, action: action, goal: goal)
+        let thresholdRatio = requirement.thresholdRatio
+        let thresholdDelta = requirement.thresholdDelta
+        if !shouldRequireVisibleChange {
             return VisualVerificationResult(
                 actionType: actionType,
                 required: false,
@@ -694,14 +700,14 @@ public final class MacOSRuntimeService: @unchecked Sendable {
                 confirmed: true,
                 changeRatio: 0,
                 averageDelta: 0,
-                thresholdRatio: requirement.thresholdRatio,
-                thresholdDelta: requirement.thresholdDelta,
+                thresholdRatio: thresholdRatio,
+                thresholdDelta: thresholdDelta,
                 reason: "No visible change is required for \(actionType).",
             )
         }
 
         let metrics = try compareScreens(before: before, after: after)
-        let changed = metrics.changeRatio >= requirement.thresholdRatio || metrics.averageDelta >= requirement.thresholdDelta
+        let changed = metrics.changeRatio >= thresholdRatio || metrics.averageDelta >= thresholdDelta
         let reason = changed
             ? "Visible screen change confirmed after \(actionType)."
             : "No meaningful visible screen change was detected after \(actionType)."
@@ -712,18 +718,90 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             confirmed: changed,
             changeRatio: metrics.changeRatio,
             averageDelta: metrics.averageDelta,
-            thresholdRatio: requirement.thresholdRatio,
-            thresholdDelta: requirement.thresholdDelta,
+            thresholdRatio: thresholdRatio,
+            thresholdDelta: thresholdDelta,
             reason: reason,
         )
     }
 
-    private func verificationRequirement(for actionType: String) -> (required: Bool, thresholdRatio: Double, thresholdDelta: Double) {
+    private func verificationRequirement(for actionType: String) -> (requiredByDefault: Bool, thresholdRatio: Double, thresholdDelta: Double) {
         switch actionType {
         case "scroll", "drag":
             return (true, 0.012, 0.008)
+        case "type":
+            return (false, 0.0015, 0.0009)
+        case "key_press":
+            return (false, 0.0018, 0.0010)
+        case "click", "double_click":
+            return (false, 0.0022, 0.0012)
         default:
             return (false, 0.0, 0.0)
+        }
+    }
+
+    private func goalRequiresVisibleChange(actionType: String, action: [String: JSONValue], goal: String?) -> Bool {
+        let normalizedGoal = (goal ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalizedGoal.isEmpty {
+            return false
+        }
+
+        let noProofNeededGoalTokens = [
+            "copy",
+            "copier",
+            "copiar",
+            "read clipboard",
+            "lire le presse-papiers",
+            "pasteboard",
+        ]
+        if noProofNeededGoalTokens.contains(where: normalizedGoal.contains) {
+            return false
+        }
+
+        switch actionType {
+        case "type":
+            return true
+        case "scroll", "drag":
+            return true
+        case "click", "double_click", "key_press":
+            if actionType == "key_press",
+               let keys = action["keys"]?.arrayValue?.compactMap(\.stringValue).map({ $0.lowercased() }) {
+                let normalizedKeys = Set(keys)
+                if normalizedKeys == ["cmd", "c"] || normalizedKeys == ["command", "c"] {
+                    return false
+                }
+            }
+
+            let visibleGoalTokens = [
+                "focus",
+                "address bar",
+                "open",
+                "ouvrir",
+                "abrir",
+                "show",
+                "afficher",
+                "mostrar",
+                "submit",
+                "send",
+                "load",
+                "navigate",
+                "go to",
+                "search",
+                "recherche",
+                "buscar",
+                "select",
+                "selection",
+                "select the visible",
+                "activate",
+                "switch",
+                "bring",
+                "place the text cursor",
+                "cursor",
+                "highlight",
+                "press enter",
+            ]
+            return visibleGoalTokens.contains(where: normalizedGoal.contains)
+        default:
+            return false
         }
     }
 

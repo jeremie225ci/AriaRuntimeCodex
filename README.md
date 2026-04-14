@@ -58,7 +58,7 @@ For a no-admin local install in one command:
 
 This installs `Aria Runtime.app` into `~/Applications`, links `aria` into `~/.local/bin/aria`, starts the background runtime, requests macOS permissions, and registers the MCP server for Codex when the `codex` CLI is available.
 
-`aria setup` now also installs an Aria-managed default Codex profile in `~/.codex/config.toml` and writes strict visual-task instructions to `~/.codex/aria-runtime/developer_instructions.md`. That profile disables native `web_search` and `tool_search` so Codex stays inside Aria for computer use.
+`aria setup` now also installs an Aria-managed default Codex profile in `~/.codex/config.toml` and writes strict visual-task instructions to `~/.codex/aria-runtime/model_instructions.md`. That profile disables native `web_search` and `tool_search`, turns `open_world_enabled` off for the profile, and steers Codex back into Aria for browser computer use.
 
 The install surface is binary-first. End users should use the packaged app or pkg and should not need this repository at all.
 

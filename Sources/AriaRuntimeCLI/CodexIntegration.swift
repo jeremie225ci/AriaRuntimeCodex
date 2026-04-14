@@ -4,7 +4,7 @@ import AriaRuntimeShared
 enum CodexIntegration {
     private static let serverName = "aria-runtime"
     private static let instructionsDirectoryName = "aria-runtime"
-    private static let instructionsFileName = "developer_instructions.md"
+    private static let instructionsFileName = "model_instructions.md"
 
     static func run(args: [String], executablePath: String) throws {
         switch args {
@@ -126,10 +126,10 @@ enum CodexIntegration {
 
         try fileManager.createDirectory(at: codexHome, withIntermediateDirectories: true)
         try fileManager.createDirectory(at: instructionsDirectoryURL, withIntermediateDirectories: true)
-        try AriaCodexProfile.developerInstructionsText().write(to: instructionsURL, atomically: true, encoding: .utf8)
+        try AriaCodexProfile.modelInstructionsText().write(to: instructionsURL, atomically: true, encoding: .utf8)
 
         let existing = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
-        let merged = AriaCodexProfile.mergedConfig(existing: existing, developerInstructionsFile: instructionsURL.path)
+        let merged = AriaCodexProfile.mergedConfig(existing: existing, modelInstructionsFile: instructionsURL.path)
         try merged.write(to: configURL, atomically: true, encoding: .utf8)
 
         return (configURL.path, instructionsURL.path)
@@ -166,7 +166,8 @@ enum CodexIntegration {
             "instructions_path": .string(instructionsURL.path),
             "instructions_file_exists": .bool(fileManager.fileExists(atPath: instructionsURL.path)),
             "disabled_tools": .array(AriaCodexProfile.disabledTools.map(JSONValue.string)),
-            "installed": .bool(AriaCodexProfile.profileInstalled(in: existing, developerInstructionsFile: instructionsURL.path)),
+            "open_world_enabled": .bool(AriaCodexProfile.openWorldEnabled),
+            "installed": .bool(AriaCodexProfile.profileInstalled(in: existing, modelInstructionsFile: instructionsURL.path)),
         ]
     }
 

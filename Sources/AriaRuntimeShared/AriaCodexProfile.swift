@@ -7,6 +7,7 @@ public enum AriaCodexProfile {
         "web_search",
         "tool_search",
     ]
+    public static let openWorldEnabled = false
     public static let approvedMCPTools = [
         "runtime_health",
         "runtime_permissions",
@@ -27,7 +28,7 @@ public enum AriaCodexProfile {
         "upload_file_to_active_app",
     ]
 
-    public static func developerInstructionsText() -> String {
+    public static func modelInstructionsText() -> String {
         """
         Aria is the control layer for Codex on macOS visual tasks.
 
@@ -43,9 +44,11 @@ public enum AriaCodexProfile {
 
         Forbidden behavior for visual tasks:
         - Do not use native web_search or tool_search after Aria has taken control.
+        - Do not use native open-world browsing or out-of-band research once Aria has taken control of the visual task.
         - Do not use DOM inspection, browser developer tools, browser JavaScript automation, or AppleScript DOM access as a substitute for visual computer use.
         - Do not switch to out-of-band browsing or research flows for the same visual task once aria_bootstrap has started the loop.
         - Do not claim that a note was saved, text was typed, a draft exists, a scroll happened, or a form was completed unless the latest screenshot visibly proves it.
+        - If a browser query or target URL is already known, prefer aria-runtime.system_open_url over address-bar typing.
 
         Scope:
         - Code reasoning, repo navigation, editing, tests, and bug fixing remain normal Codex work.
@@ -59,7 +62,7 @@ public enum AriaCodexProfile {
         """
     }
 
-    public static func mergedConfig(existing: String, developerInstructionsFile: String) -> String {
+    public static func mergedConfig(existing: String, modelInstructionsFile: String) -> String {
         var config = normalizedLines(from: existing)
         config = replacingTopLevelKey(
             in: config,
@@ -70,7 +73,8 @@ public enum AriaCodexProfile {
             in: config,
             named: "profiles.\(profileName)",
             body: [
-                #"developer_instructions_file = "\#(escapedTomlString(developerInstructionsFile))""#,
+                #"model_instructions_file = "\#(escapedTomlString(modelInstructionsFile))""#,
+                "open_world_enabled = \(openWorldEnabled ? "true" : "false")",
                 "disabled_tools = [\(disabledTools.map { #""\#($0)""# }.joined(separator: ", "))]",
             ]
         )
@@ -95,10 +99,11 @@ public enum AriaCodexProfile {
         return serializedConfig(from: config)
     }
 
-    public static func profileInstalled(in config: String, developerInstructionsFile: String) -> Bool {
+    public static func profileInstalled(in config: String, modelInstructionsFile: String) -> Bool {
         let lines = normalizedLines(from: config)
         return containsTopLevelKeyValue(in: lines, key: "profile", value: profileName)
-            && section(named: "profiles.\(profileName)", in: lines).contains(#"developer_instructions_file = "\#(escapedTomlString(developerInstructionsFile))""#)
+            && section(named: "profiles.\(profileName)", in: lines).contains(#"model_instructions_file = "\#(escapedTomlString(modelInstructionsFile))""#)
+            && section(named: "profiles.\(profileName)", in: lines).contains("open_world_enabled = \(openWorldEnabled ? "true" : "false")")
             && section(named: "profiles.\(profileName)", in: lines).contains("disabled_tools = [\(disabledTools.map { #""\#($0)""# }.joined(separator: ", "))]")
     }
 
