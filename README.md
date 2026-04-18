@@ -1,4 +1,4 @@
-# Aria Runtime Codex
+# Aria Runtime Codex computer use 
 
 Aria Runtime Codex is a **local-first macOS runtime** that gives **Codex** controlled computer-use powers on a real Mac.
 
