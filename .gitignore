@@ -3,3 +3,6 @@
 .build-universal/
 dist/
 pkgroot/
+
+# Local manual test artifacts
+madrid_houses_under_2000.txt

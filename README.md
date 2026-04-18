@@ -1,38 +1,159 @@
 # Aria Runtime Codex
 
-Aria Runtime Codex is a standalone macOS product that gives Codex local machine powers without shipping the legacy Linux monorepo or a remote Aria brain.
+Aria Runtime Codex is a **local-first macOS runtime** that gives **Codex** controlled computer-use powers on a real Mac.
 
-## Product Shape
+The core idea is simple:
 
-- `Codex` remains the only brain.
-- `Aria` provides the control loop, local runtime, MCP surface, and install flow.
-- `aria-runtime-daemon` exposes local machine capabilities over a Unix socket.
-- `aria` is the operator-facing CLI and MCP bridge.
-- `Aria Runtime.app` is the menu bar shell that installs and supervises the local daemon.
-- end users receive packaged binaries only, not the source repository
+- **Codex is the brain**
+- **Aria is the local execution layer**
+- **There is no remote Aria brain, no Hetzner dependency, and no Aria decision server**
 
-## Public MCP Surface
+This repository is intended to be **open source**, **self-hosted**, and **auditable**.
+
+## Why this project exists
+
+The earlier Aria direction depended heavily on a Linux VM and a remote brain/server split. That model made experimentation possible, but it added too much friction for everyday developer use.
+
+This repository takes the opposite direction:
+
+- install quickly on a local Mac
+- expose local desktop/browser/app powers through an MCP server
+- let **Codex** make the decisions
+- keep Aria focused on **control loop, permissions, screenshots, and action execution**
+
+That direction now aligns much more closely with OpenAI's current Codex computer-use direction:
+
+- official Codex computer-use docs: <https://developers.openai.com/codex/app/computer-use>
+- official Codex config reference: <https://developers.openai.com/codex/config-reference>
+- public Codex repository: <https://github.com/openai/codex>
+
+## Project status
+
+This repo is designed as a **standalone local runtime** for macOS:
+
+- no remote Aria server required
+- no remote Aria planner required
+- no Aria-owned OpenAI key required to decide actions
+- all planning stays in Codex
+- Aria only provides local machine powers plus a strict visual control loop
+
+## Design principles
+
+1. **Local-first**
+   - The runtime lives on the user's Mac.
+   - The daemon communicates over a local Unix socket.
+   - No hosted Aria control plane is required.
+
+2. **Codex-native**
+   - Aria integrates through a local MCP server.
+   - Codex keeps code reasoning, repo understanding, planning, and bug fixing.
+   - Aria contributes machine execution primitives and visual-task discipline.
+
+3. **Strict computer-use loop**
+   - For visual tasks, the flow is intentionally narrow:
+     1. `aria_bootstrap`
+     2. `system_open_application` or `system_open_url`
+     3. `computer_snapshot`
+     4. one `computer_action`
+     5. inspect screenshot
+     6. repeat
+   - This mirrors the screenshot-driven approach recommended for computer use.
+
+4. **Open and auditable**
+   - The codebase is small enough to inspect.
+   - The local control logic is readable.
+   - The install flow is reproducible from source.
+
+## Architecture
+
+### High-level shape
+
+- **Codex**
+  - the only decision engine
+  - decides what to do
+  - uses Aria through MCP
+
+- **`aria`**
+  - CLI entrypoint
+  - MCP bridge
+  - setup/install helper for Codex integration
+
+- **`aria-runtime-daemon`**
+  - long-running local daemon
+  - exposes machine/runtime services through a Unix socket
+
+- **`Aria Runtime.app`**
+  - menu bar shell for macOS
+  - supervises the local daemon
+  - helps with installation and permissions
+
+- **`AriaRuntimeMacOS`**
+  - macOS-specific desktop/runtime implementation
+  - screenshots, keyboard, mouse, app launching, permissions checks
+
+- **`AriaRuntimeShared`**
+  - shared protocol/config/control-plane logic
+
+### Local-only communication
+
+This project is already architected around a **local Unix socket runtime**, not a remote hosted service.
+
+What that means in practice:
+
+- Aria does **not** need a cloud gateway to execute actions
+- Aria does **not** need a remote planner to decide actions
+- the runtime speaks locally to:
+  - the daemon
+  - macOS APIs
+  - the Codex MCP integration
+
+## Public MCP surface
+
+The visual-task surface intentionally stays small:
 
 - `aria_bootstrap`
-- `computer_snapshot`
-- `computer_action`
-- `system_open_application`
-- `system_open_url`
 - `runtime_health`
 - `runtime_permissions`
+- `system_open_application`
+- `system_open_url`
+- `computer_snapshot`
+- `computer_action`
 
-The Aria control loop is strict:
+For visual tasks, Aria locks Codex into a canonical loop instead of letting it drift into:
 
-1. `aria_bootstrap` once per visual task
-2. enter app/site if needed
-3. `computer_snapshot`
-4. exactly one `computer_action`
-5. inspect returned screenshot
-6. repeat until visually verified
+- DOM inspection
+- AppleScript DOM scraping
+- out-of-band browsing
+- clipboard/window helper shortcuts as a substitute for computer use
 
-For visual tasks, Aria is designed to steer Codex away from DOM-first strategies and toward screenshot-driven computer use.
+## How this relates to official Codex computer use
 
-## Build
+From the official OpenAI Codex computer-use docs:
+
+- computer use in the Codex app is available on macOS
+- it is for tasks that require a graphical UI
+- it depends on macOS permissions such as **Screen Recording** and **Accessibility**
+- Codex can view screen content, take screenshots, and interact with desktop apps
+- approvals and sandboxing still matter for file edits and shell commands
+
+That maps well to this repository's direction:
+
+- Aria should stay focused on **desktop execution**
+- Codex should remain the **planner**
+- visual tasks should be based on **screenshots and one action at a time**
+- permissions should be explicit and user-controlled
+
+Also important: the public OpenAI Codex repository confirms that **Codex CLI runs locally on your computer**, while Codex Web is the cloud-based agent. This repository is intentionally aligned with the **local** model, not the hosted one.
+
+## Build from source
+
+Requirements:
+
+- macOS 13+
+- Xcode / Swift toolchain with Swift 6.2 support
+- Codex CLI installed if you want the full Codex integration
+
+Build and test:
 
 ```bash
 swift build
@@ -42,55 +163,78 @@ swift test
 ./.build/debug/aria-runtime-daemon &
 ./.build/debug/aria smoke runtime
 kill %1
+```
+
+Universal app build:
+
+```bash
 ./scripts/build_app_bundle.sh
+```
+
+Package build:
+
+```bash
 ./scripts/build_pkg.sh
 ```
 
-The universal build targets both `x86_64` and `arm64` in one pass.
+The packaged build targets both:
 
-## Local Install
+- `x86_64`
+- `arm64` / Apple Silicon
 
-For a no-admin local install in one command:
+## Local install
+
+Fast local install:
 
 ```bash
 ./scripts/install_local.sh
 ```
 
-This installs `Aria Runtime.app` into `~/Applications`, links `aria` into `~/.local/bin/aria`, starts the background runtime, requests macOS permissions, and registers the MCP server for Codex when the `codex` CLI is available.
+This installs:
 
-`aria setup` now also installs an Aria-managed default Codex profile in `~/.codex/config.toml` and writes strict visual-task instructions to `~/.codex/aria-runtime/model_instructions.md`. That profile sets `web_search = "disabled"`, exposes only Aria's canonical MCP visual tools to Codex, and steers Codex back into Aria for browser computer use.
+- `Aria Runtime.app` into `~/Applications`
+- `aria` into `~/.local/bin/aria`
+- the background runtime
+- the Codex MCP integration when Codex is available
 
-The install surface is binary-first. End users should use the packaged app or pkg and should not need this repository at all.
+## Codex integration
 
-For the packaged app or any existing install, the canonical onboarding command is:
+For the packaged app or an existing install:
 
 ```bash
 aria setup
+aria setup status
 ```
 
-Useful follow-ups:
+Aria configures Codex using the official-style config surface:
+
+- `model_instructions_file`
+- `web_search = "disabled"` for the Aria profile
+- MCP `enabled_tools` allowlisting for the Aria server
+
+The goal is:
+
+- normal coding stays flexible in Codex
+- visual tasks are forced back into the Aria loop
+
+## Permissions
+
+Computer use on macOS depends on system permissions.
+
+You should expect to grant:
+
+- **Accessibility**
+- **Screen Recording**
+
+Useful status check:
 
 ```bash
 aria setup status
-aria setup test-prompt
 ```
 
-By default, repeated local installs reuse the existing `dist/Aria Runtime.app` bundle so macOS permissions are not reset on every test. To rebuild before installing:
+## Smoke tests
 
-```bash
-ARIA_RUNTIME_REBUILD=1 ./scripts/install_local.sh
-```
-
-From the repo root, the shortest install path is:
-
-```bash
-cd path/to/AriaRuntimeCodex
-./install_aria_runtime.sh
-```
-
-## Smoke Tests
-
-The CLI exposes non-destructive smoke tests for the three critical paths:
+The CLI includes non-destructive smoke tests:
 
 ```bash
 ./.build/debug/aria smoke mcp
@@ -100,37 +244,27 @@ The CLI exposes non-destructive smoke tests for the three critical paths:
 kill %1
 ```
 
-- `aria smoke mcp` validates the stdio MCP bridge, Aria control instructions, and screenshot-based tools.
-- `aria smoke codex` validates JSONL MCP framing plus resources and prompts used to steer Codex.
-- `aria smoke runtime` validates the live daemon, Aria bootstrap instructions, and screenshot capture when permission exists.
+What they validate:
 
-## Codex Setup
+- `aria smoke mcp`
+  - MCP transport
+  - Aria policy enforcement
+  - screenshot-driven tool flow
 
-```bash
-./dist/Aria\ Runtime.app/Contents/MacOS/aria codex install
-./dist/Aria\ Runtime.app/Contents/MacOS/aria codex status
-```
+- `aria smoke codex`
+  - Codex-facing MCP framing/resources/prompts
 
-This registers `aria-runtime` as a local MCP server for Codex using the shipped app bundle binary.
+- `aria smoke runtime`
+  - daemon health
+  - local screenshot/runtime path
 
-It also sets Codex's default profile to `aria`, so a normal `codex` session starts with Aria's visual-task rules already loaded.
+## Release outputs
 
-Once installed, Codex should discover Aria as a local MCP server and receive Aria's control instructions through:
+- app bundle: `dist/Aria Runtime.app`
+- unsigned package: `dist/AriaRuntime.pkg`
+- signed package: `dist/AriaRuntime-signed.pkg`
 
-- MCP initialize instructions
-- MCP prompt `aria_computer_use`
-- MCP resources under `aria://...`
-- the canonical tools `aria_bootstrap`, `computer_snapshot`, and `computer_action`
-
-`aria setup` also prints a ready-to-run visual smoke prompt for Codex.
-
-## Versioned Build
-
-```bash
-ARIA_RUNTIME_VERSION=1.2.0 ARIA_RUNTIME_BUILD=42 ./scripts/build_pkg.sh
-```
-
-## Signed Release
+Signed release:
 
 ```bash
 ARIA_RUNTIME_VERSION=1.2.0 \
@@ -140,18 +274,48 @@ ARIA_CODESIGN_INSTALLER_IDENTITY="Developer ID Installer: Your Company" \
 ./scripts/build_signed_pkg.sh
 ```
 
-## Notarization
-
-Create a notary profile once with `xcrun notarytool store-credentials`, then run:
+Notarization:
 
 ```bash
 ARIA_NOTARY_PROFILE=aria-runtime ./scripts/notarize_pkg.sh
 ```
 
-## Install Surface
+## Open-source scope
 
-- app bundle path: `dist/Aria Runtime.app`
-- unsigned package path: `dist/AriaRuntime.pkg`
-- signed package path: `dist/AriaRuntime-signed.pkg`
+This repository is meant to contain the **local runtime product**:
 
-After installation, the postinstall script links `aria` into `/usr/local/bin/aria`.
+- local daemon
+- macOS runtime implementation
+- Codex MCP integration
+- packaging and install scripts
+- local control-plane logic
+
+This repository does **not** depend on shipping:
+
+- a remote Aria planner
+- a hosted gateway
+- a VM-only execution model
+
+## Relationship to OpenAI / Codex
+
+This project integrates with Codex, but it is **not** the official OpenAI Codex repository.
+
+If you want the official Codex codebase or docs:
+
+- Codex repo: <https://github.com/openai/codex>
+- Codex docs: <https://developers.openai.com/codex>
+- Codex computer use docs: <https://developers.openai.com/codex/app/computer-use>
+
+## Contributing
+
+Contributions are welcome. For now, the most useful contributions are:
+
+- macOS runtime fixes
+- permission/onboarding improvements
+- stronger visual verification
+- packaging and installation polish
+- tests around Codex integration behavior
+
+## License
+
+Licensed under the **Apache License 2.0**. See [LICENSE](./LICENSE).
