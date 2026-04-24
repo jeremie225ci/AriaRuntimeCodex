@@ -545,6 +545,30 @@ enum SmokeRunner {
         try require((bootstrapStructured["completion_proof_rules"]?.arrayValue ?? []).isEmpty == false, "aria_bootstrap returned completion proof rules")
         pass("MCP aria_bootstrap tool call succeeded")
 
+        let repeatedBootstrap = try client.request(
+            method: "tools/call",
+            params: .object([
+                "name": .string("aria_bootstrap"),
+                "arguments": .object([:]),
+            ])
+        )
+        let repeatedBootstrapStructured = try requireToolError(repeatedBootstrap, context: "tools/call repeated aria_bootstrap")
+        try require(repeatedBootstrapStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "repeated aria_bootstrap is rejected by Aria policy")
+        pass("MCP policy blocks repeated aria_bootstrap")
+
+        let blockedDeepLink = try client.request(
+            method: "tools/call",
+            params: .object([
+                "name": .string("system_open_url"),
+                "arguments": .object([
+                    "url": .string("https://mail.google.com/mail/?view=cm&fs=1&tf=1&to=test@example.com&su=Hello&body=Body"),
+                ]),
+            ])
+        )
+        let blockedDeepLinkStructured = try requireToolError(blockedDeepLink, context: "tools/call form-prefill deeplink")
+        try require(blockedDeepLinkStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "form-prefill deeplink URLs are rejected by Aria policy")
+        pass("MCP policy blocks form-prefill/deeplink URLs")
+
         let blockedHelperAfterBootstrap = try client.request(
             method: "tools/call",
             params: .object([

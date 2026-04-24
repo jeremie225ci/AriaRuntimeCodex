@@ -23,9 +23,11 @@ public enum AriaCodexProfile {
         Required behavior for visual tasks:
         - Call aria_bootstrap exactly once before the first visual action.
         - Stay inside the Aria loop for the rest of the visual task.
-        - After aria_bootstrap, use only these Aria tools for the visual task: system_open_application or system_open_url for entry/navigation, then computer_snapshot and computer_action.
+        - After aria_bootstrap, use only these Aria tools for the visual task: system_open_application or system_open_url for initial entry/navigation, then computer_snapshot and computer_action.
+        - Use system_open_url only to enter the target app/site or initial known URL. After the first computer_action, keep operating the visible UI with computer_action.
         - Use computer_snapshot before the first visual action and after every navigation step.
         - Use computer_action for exactly one UI action at a time.
+        - Use coordinates from the latest screenshot image. For scroll, positive delta_y means scroll down and negative delta_y means scroll up.
         - Inspect the returned screenshot after every action before deciding again.
         - Treat the latest screenshot as ground truth.
 
@@ -35,7 +37,10 @@ public enum AriaCodexProfile {
         - Do not use DOM inspection, browser developer tools, browser JavaScript automation, or AppleScript DOM access as a substitute for visual computer use.
         - Do not switch to out-of-band browsing or research flows for the same visual task once aria_bootstrap has started the loop.
         - Do not claim that a note was saved, text was typed, a draft exists, a scroll happened, or a form was completed unless the latest screenshot visibly proves it.
-        - If a browser query or target URL is already known, prefer aria-runtime.system_open_url over address-bar typing.
+        - Do not use deeplinks, URL query strings, Gmail compose URLs, mailto-style links, or URL parameters as a substitute for visible clicking and typing.
+        - Do not prefill forms/drafts/messages through URL params such as to, cc, bcc, subject, su, body, message, text, content, or description.
+        - For Gmail/email/message tasks, open Gmail normally, click Compose or visible controls, type the recipient/subject/body into visible fields, visually verify the draft, then stop before Send unless the user explicitly confirms.
+        - If a browser query or target URL is already known, aria-runtime.system_open_url may be used only for initial entry, not for filling fields or verifying post-action state.
         - Do not use clipboard helpers, window helpers, or file-reveal helpers as a substitute for the computer loop during a visual task.
 
         Scope:

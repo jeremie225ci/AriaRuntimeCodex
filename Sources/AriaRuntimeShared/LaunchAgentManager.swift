@@ -23,7 +23,8 @@ public final class LaunchAgentManager: @unchecked Sendable {
     }
 
     public func defaultAgentExecutableURL(relativeTo executableURL: URL) -> URL {
-        let baseDirectory = executableURL.deletingLastPathComponent()
+        let resolvedExecutableURL = executableURL.resolvingSymlinksInPath()
+        let baseDirectory = resolvedExecutableURL.deletingLastPathComponent()
         let appExecutable = baseDirectory.appendingPathComponent("AriaRuntimeApp", isDirectory: false)
         if FileManager.default.isExecutableFile(atPath: appExecutable.path) {
             return appExecutable
@@ -34,8 +35,8 @@ public final class LaunchAgentManager: @unchecked Sendable {
             return daemonExecutable
         }
 
-        if executableURL.lastPathComponent == "AriaRuntimeApp" || executableURL.lastPathComponent == "aria-runtime-daemon" {
-            return executableURL
+        if resolvedExecutableURL.lastPathComponent == "AriaRuntimeApp" || resolvedExecutableURL.lastPathComponent == "aria-runtime-daemon" {
+            return resolvedExecutableURL
         }
 
         return appExecutable

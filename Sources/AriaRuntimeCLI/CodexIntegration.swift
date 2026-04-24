@@ -172,7 +172,7 @@ enum CodexIntegration {
     }
 
     private static func ariaCommandPath(from executablePath: String) -> String {
-        let executableURL = URL(fileURLWithPath: executablePath)
+        let executableURL = URL(fileURLWithPath: executablePath).resolvingSymlinksInPath()
         if executableURL.lastPathComponent == "aria" {
             return executableURL.path
         }

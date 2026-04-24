@@ -66,4 +66,13 @@ final class AriaCodexProfileTests: XCTestCase {
         XCTAssertFalse(cleaned.contains(#"[profiles.aria]"#))
         XCTAssertTrue(cleaned.contains(#"[mcp_servers.aria-runtime]"#))
     }
+
+    func testModelInstructionsBlockDeeplinkFormFillingAndDefineScrollDirection() {
+        let instructions = AriaCodexProfile.modelInstructionsText()
+
+        XCTAssertTrue(instructions.contains("Do not use deeplinks"))
+        XCTAssertTrue(instructions.contains("For Gmail/email/message tasks"))
+        XCTAssertTrue(instructions.contains("positive delta_y means scroll down"))
+        XCTAssertTrue(instructions.contains("After the first computer_action"))
+    }
 }

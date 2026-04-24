@@ -29,6 +29,9 @@ private final class AriaSessionState {
     private(set) var activeTask = ""
     private(set) var lastTool = ""
     private(set) var screenObservationReady = false
+    var hasPerformedComputerAction: Bool {
+        actionCount > 0
+    }
 
     func registerBootstrap(task: String?) {
         bootstrapCount += 1
@@ -301,6 +304,10 @@ final class MCPServer {
     }
 
     private func policyViolation(toolName: String, arguments: [String: JSONValue]) -> String? {
+        if toolName == "aria_bootstrap", sessionState.bootstrapCount > 0 {
+            return "aria_bootstrap must be called exactly once per visual task. Continue from the latest screenshot with computer_snapshot/computer_action instead of resetting the loop."
+        }
+
         if sessionState.bootstrapCount > 0 {
             let allowedDuringVisualTask: Set<String> = [
                 "runtime_health",
@@ -324,6 +331,15 @@ final class MCPServer {
             guard sessionState.bootstrapCount > 0 else {
                 return "Call aria_bootstrap before using navigation tools so Codex enters the Aria control loop."
             }
+            if toolName == "system_open_url" {
+                let rawURL = arguments["url"]?.stringValue ?? ""
+                if looksLikeFormOrMessagePrefillURL(rawURL) {
+                    return "system_open_url is for initial navigation only. Do not use deeplinks or URL query parameters to fill forms, Gmail drafts, recipients, subjects, bodies, messages, comments, or other visible fields. Use computer_snapshot and computer_action to click/type in the visible UI."
+                }
+                if sessionState.hasPerformedComputerAction {
+                    return "After the first computer_action, do not jump with system_open_url inside the same visual task. Continue from the visible screen using computer_snapshot and computer_action unless the user starts a new visual task."
+                }
+            }
             return nil
         case "computer_snapshot":
             guard sessionState.bootstrapCount > 0 else {
@@ -346,6 +362,61 @@ final class MCPServer {
         default:
             return nil
         }
+    }
+
+    private func looksLikeFormOrMessagePrefillURL(_ rawURL: String) -> Bool {
+        let trimmed = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return false
+        }
+
+        guard let components = URLComponents(string: trimmed) else {
+            return false
+        }
+
+        let host = (components.host ?? "").lowercased()
+        let path = components.path.lowercased()
+        let fragment = (components.fragment ?? "").lowercased()
+        let queryItems = components.queryItems ?? []
+        let queryNames = Set(queryItems.map { $0.name.lowercased() })
+        let queryValues = queryItems.compactMap { $0.value?.lowercased() }
+
+        let messagePrefillKeys: Set<String> = [
+            "to",
+            "cc",
+            "bcc",
+            "subject",
+            "su",
+            "body",
+            "message",
+            "msg",
+            "text",
+            "content",
+            "comment",
+            "description",
+        ]
+
+        if !queryNames.isDisjoint(with: messagePrefillKeys) {
+            return true
+        }
+
+        let isMailHost = host.contains("mail.google.")
+            || host.contains("gmail.")
+            || host.contains("outlook.")
+            || host.contains("office.com")
+            || host.contains("icloud.com")
+            || host.contains("mail.yahoo.")
+
+        if isMailHost {
+            if queryNames.contains("view") && queryValues.contains("cm") {
+                return true
+            }
+            if fragment.contains("compose") || path.contains("compose") {
+                return true
+            }
+        }
+
+        return false
     }
 
     private func augmentSuccessfulResult(toolName: String, arguments: [String: JSONValue], result: JSONValue) -> JSONValue {

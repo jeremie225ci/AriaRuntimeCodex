@@ -76,7 +76,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             ),
             ToolDescriptor(
                 name: "computer_action",
-                description: "The canonical Aria UI tool. Execute exactly one UI action and receive the post-action screenshot to inspect before the next action. Requires aria_bootstrap and a fresh computer_snapshot first. Do not leave the Aria loop or claim completion without screenshot proof.",
+                description: "The canonical Aria UI tool. Execute exactly one UI action using coordinates from the latest screenshot image, then receive the post-action screenshot to inspect before the next action. For scroll, positive delta_y scrolls down. Requires aria_bootstrap and a fresh computer_snapshot first. Do not leave the Aria loop or claim completion without screenshot proof.",
                 inputSchema: .object([
                     "type": .string("object"),
                     "properties": .object([
@@ -131,7 +131,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             ),
             ToolDescriptor(
                 name: "system_open_url",
-                description: "Open a URL using the user's default browser. Requires aria_bootstrap first. After navigation, stay in the Aria loop and call computer_snapshot before any visual interaction.",
+                description: "Open an initial entry URL using the user's default browser. Requires aria_bootstrap first. Do not use URL query parameters or deeplinks to fill forms, compose messages, set recipients/subjects/bodies, submit, or verify state. After navigation, stay in the Aria loop and call computer_snapshot before any visual interaction.",
                 inputSchema: .object([
                     "type": .string("object"),
                     "properties": .object([
@@ -560,6 +560,12 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             "width": .number(Double(frame.image.width)),
             "height": .number(Double(frame.image.height)),
             "image_base64": .string(frame.pngData.base64EncodedString()),
+            "coordinate_system": .object([
+                "origin": .string("top_left"),
+                "units": .string("screenshot_image_pixels"),
+                "note": .string("Use coordinates from this returned screenshot. Aria maps screenshot pixels to macOS display points internally."),
+                "scroll_delta_y": .string("positive_scrolls_down_negative_scrolls_up"),
+            ]),
         ]
     }
 
@@ -570,30 +576,38 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             let x = try requiredDouble(action, key: "x")
             let y = try requiredDouble(action, key: "y")
             let button = action["button"]?.stringValue ?? "left"
+            let displayPoint = screenshotCoordinateToDisplayPoint(x: x, y: y)
             try ensureAccessibility()
-            try click(at: CGPoint(x: x, y: y), button: button, clickCount: 1)
+            try click(at: displayPoint, button: button, clickCount: 1)
             return [
                 "type": .string(actionType),
                 "x": .number(x),
                 "y": .number(y),
+                "display_x": .number(displayPoint.x),
+                "display_y": .number(displayPoint.y),
                 "button": .string(button),
             ]
         case "double_click":
             let x = try requiredDouble(action, key: "x")
             let y = try requiredDouble(action, key: "y")
+            let displayPoint = screenshotCoordinateToDisplayPoint(x: x, y: y)
             try ensureAccessibility()
-            try click(at: CGPoint(x: x, y: y), button: "left", clickCount: 2)
+            try click(at: displayPoint, button: "left", clickCount: 2)
             return [
                 "type": .string(actionType),
                 "x": .number(x),
                 "y": .number(y),
+                "display_x": .number(displayPoint.x),
+                "display_y": .number(displayPoint.y),
             ]
         case "scroll":
+            let hasDeltaX = action["delta_x"]?.doubleValue != nil
+            let hasDeltaY = action["delta_y"]?.doubleValue != nil
             let deltaX = action["delta_x"]?.doubleValue ?? 0
-            let deltaY = action["delta_y"]?.doubleValue ?? 0
+            let deltaY = hasDeltaY ? (action["delta_y"]?.doubleValue ?? 0) : (hasDeltaX ? 0 : 620)
             try ensureAccessibility()
             if let x = action["x"]?.doubleValue, let y = action["y"]?.doubleValue {
-                try moveMouse(to: CGPoint(x: x, y: y))
+                try moveMouse(to: screenshotCoordinateToDisplayPoint(x: x, y: y))
                 usleep(60_000)
             }
             try scroll(deltaX: Int32(deltaX.rounded()), deltaY: Int32(deltaY.rounded()))
@@ -630,18 +644,21 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         case "move":
             let x = try requiredDouble(action, key: "x")
             let y = try requiredDouble(action, key: "y")
+            let displayPoint = screenshotCoordinateToDisplayPoint(x: x, y: y)
             try ensureAccessibility()
-            try moveMouse(to: CGPoint(x: x, y: y))
+            try moveMouse(to: displayPoint)
             return [
                 "type": .string(actionType),
                 "x": .number(x),
                 "y": .number(y),
+                "display_x": .number(displayPoint.x),
+                "display_y": .number(displayPoint.y),
             ]
         case "drag":
             guard let path = action["path"]?.arrayValue, !path.isEmpty else {
                 throw RuntimeProtocolError.invalidParameters("computer_action drag requires a non-empty path array")
             }
-            let points = try path.map { item -> CGPoint in
+            let screenshotPoints = try path.map { item -> CGPoint in
                 guard let point = item.objectValue else {
                     throw RuntimeProtocolError.invalidParameters("computer_action drag path items must be objects")
                 }
@@ -650,11 +667,20 @@ public final class MacOSRuntimeService: @unchecked Sendable {
                     y: try requiredDouble(point, key: "y")
                 )
             }
+            let displayPoints = screenshotPoints.map { point in
+                screenshotCoordinateToDisplayPoint(x: point.x, y: point.y)
+            }
             try ensureAccessibility()
-            try drag(along: points)
+            try drag(along: displayPoints)
             return [
                 "type": .string(actionType),
-                "path": .array(points.map { point in
+                "path": .array(screenshotPoints.map { point in
+                    .object([
+                        "x": .number(point.x),
+                        "y": .number(point.y),
+                    ])
+                }),
+                "display_path": .array(displayPoints.map { point in
                     .object([
                         "x": .number(point.x),
                         "y": .number(point.y),
@@ -858,6 +884,47 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         return buffer
     }
 
+    private func screenshotCoordinateToDisplayPoint(x: Double, y: Double) -> CGPoint {
+        let displayID = CGMainDisplayID()
+        let bounds = CGDisplayBounds(displayID)
+        let pixelWidth = Double(CGDisplayPixelsWide(displayID))
+        let pixelHeight = Double(CGDisplayPixelsHigh(displayID))
+
+        guard pixelWidth > 0, pixelHeight > 0, bounds.width > 0, bounds.height > 0 else {
+            return CGPoint(x: x, y: y)
+        }
+
+        let clampedX = min(max(x, 0), pixelWidth)
+        let clampedY = min(max(y, 0), pixelHeight)
+        return CGPoint(
+            x: bounds.origin.x + (clampedX / pixelWidth) * bounds.width,
+            y: bounds.origin.y + (clampedY / pixelHeight) * bounds.height
+        )
+    }
+
+    private func displayRectToScreenshotPixelBounds(x: Double, y: Double, width: Double, height: Double) -> [String: JSONValue] {
+        let displayID = CGMainDisplayID()
+        let displayBounds = CGDisplayBounds(displayID)
+        let pixelWidth = Double(CGDisplayPixelsWide(displayID))
+        let pixelHeight = Double(CGDisplayPixelsHigh(displayID))
+
+        guard pixelWidth > 0, pixelHeight > 0, displayBounds.width > 0, displayBounds.height > 0 else {
+            return [
+                "x": .number(x),
+                "y": .number(y),
+                "width": .number(width),
+                "height": .number(height),
+            ]
+        }
+
+        return [
+            "x": .number(((x - displayBounds.origin.x) / displayBounds.width) * pixelWidth),
+            "y": .number(((y - displayBounds.origin.y) / displayBounds.height) * pixelHeight),
+            "width": .number((width / displayBounds.width) * pixelWidth),
+            "height": .number((height / displayBounds.height) * pixelHeight),
+        ]
+    }
+
     private func click(at point: CGPoint, button: String, clickCount: Int) throws {
         let mouseButton: CGMouseButton = button.lowercased() == "right" ? .right : .left
         let downType: CGEventType = mouseButton == .right ? .rightMouseDown : .leftMouseDown
@@ -912,18 +979,21 @@ public final class MacOSRuntimeService: @unchecked Sendable {
     }
 
     private func typeText(_ text: String) throws {
-        let payload = Array(text.utf16)
-        guard
-            let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
-            let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false)
-        else {
-            throw RuntimeProtocolError.runtimeFailure("Unable to construct keyboard events.")
-        }
+        for character in text {
+            let payload = Array(String(character).utf16)
+            guard
+                let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
+                let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false)
+            else {
+                throw RuntimeProtocolError.runtimeFailure("Unable to construct keyboard events.")
+            }
 
-        down.keyboardSetUnicodeString(stringLength: payload.count, unicodeString: payload)
-        up.keyboardSetUnicodeString(stringLength: payload.count, unicodeString: payload)
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
+            down.keyboardSetUnicodeString(stringLength: payload.count, unicodeString: payload)
+            up.keyboardSetUnicodeString(stringLength: payload.count, unicodeString: payload)
+            down.post(tap: .cghidEventTap)
+            up.post(tap: .cghidEventTap)
+            usleep(8_000)
+        }
     }
 
     private func keyPress(_ keys: [String]) throws {
@@ -944,12 +1014,15 @@ public final class MacOSRuntimeService: @unchecked Sendable {
     }
 
     private func scroll(deltaX: Int32, deltaY: Int32) throws {
+        // Codex computer-use deltas use the human/screenshot convention:
+        // positive Y means "scroll down". CGEvent wheel deltas use the opposite
+        // sign on macOS, so invert here to keep the public MCP contract stable.
         guard let event = CGEvent(
             scrollWheelEvent2Source: nil,
             units: .pixel,
             wheelCount: 2,
-            wheel1: deltaY,
-            wheel2: deltaX,
+            wheel1: -deltaY,
+            wheel2: -deltaX,
             wheel3: 0
         ) else {
             throw RuntimeProtocolError.runtimeFailure("Unable to construct scroll event.")
@@ -988,16 +1061,20 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         let width = bounds["Width"] as? Double ?? 0
         let height = bounds["Height"] as? Double ?? 0
         let layer = entry[kCGWindowLayer as String] as? Int ?? 0
+        let screenshotBounds = displayRectToScreenshotPixelBounds(x: x, y: y, width: width, height: height)
         return .object([
             "window_id": .number(Double(entry[kCGWindowNumber as String] as? Int ?? 0)),
             "owner_name": .string(entry[kCGWindowOwnerName as String] as? String ?? ""),
             "window_name": .string(entry[kCGWindowName as String] as? String ?? ""),
-            "bounds": .object([
+            "bounds": .object(screenshotBounds),
+            "bounds_units": .string("screenshot_image_pixels"),
+            "display_bounds": .object([
                 "x": .number(x),
                 "y": .number(y),
                 "width": .number(width),
                 "height": .number(height),
             ]),
+            "display_bounds_units": .string("macos_display_points"),
             "layer": .number(Double(layer)),
             "pid": .number(Double(entry[kCGWindowOwnerPID as String] as? Int ?? 0)),
         ])

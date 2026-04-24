@@ -11,13 +11,18 @@ public enum AriaControlPlane {
 
     public static let visualLoopRules = [
         "Call aria_bootstrap exactly once at the start of every visual or UI task.",
-        "Use system_open_application or system_open_url only to enter the target app or site before the visual loop.",
+        "Use system_open_application or system_open_url only for initial entry into the target app or site.",
+        "After the first computer_action, keep operating the visible app with computer_snapshot and computer_action instead of jumping by URL.",
+        "Do not use URL query parameters, deeplinks, mail compose URLs, or search/address-bar shortcuts to fill forms, drafts, recipients, subjects, message bodies, comments, or other visible fields.",
+        "For Gmail/email/message tasks, open the app/site, click visible controls, and type into visible fields with computer_action; do not prefill drafts through mail.google.com compose parameters.",
         "Once the visual loop has started, do not switch to clipboard helpers, window-inspection helpers, DOM helpers, or out-of-band research as a substitute for computer use.",
-        "For browser navigation or search where the query or destination is already known, prefer system_open_url over typing into the address bar.",
+        "For the initial browser navigation or search only, system_open_url is acceptable when the destination URL or search page is already known.",
         "Capture the screen with computer_snapshot before the first UI action.",
         "Execute exactly one UI action per computer_action call.",
         "Inspect the returned screenshot after every action before choosing the next action.",
         "Treat scroll and drag as successful only when the returned screenshot confirms a visual change.",
+        "computer_action coordinates are screenshot-image pixels with origin at the top-left of the returned screenshot.",
+        "For scroll, positive delta_y means scroll down; negative delta_y means scroll up.",
         "Verify completion visually before claiming success.",
     ]
 
@@ -29,6 +34,8 @@ public enum AriaControlPlane {
 
     public static let forbiddenDefaults = [
         "Do not use DOM inspection, browser JavaScript, or AppleScript DOM access for visual tasks.",
+        "Do not use deeplinks or URL query strings as a substitute for clicking and typing in the visible UI.",
+        "Do not use mail.google.com compose URLs, mailto-style URLs, or URL parameters such as to, cc, bcc, subject, su, body, message, text, content, or description to draft or send messages.",
         "Do not chain multiple UI actions into one call.",
         "Do not guess stale coordinates without a fresh screenshot.",
         "Do not claim a button was clicked or a form was submitted without post-action confirmation.",
@@ -80,7 +87,7 @@ public enum AriaControlPlane {
         7. Do not claim completion unless the latest screenshot proves it.
 
         For visual tasks, do not use DOM inspection, Safari JavaScript from Apple Events, AppleScript UI scraping, generic web search tools, out-of-band browsing, clipboard extraction, or window inspection as the primary strategy once Aria has taken control. Aria's canonical visual tools are aria_bootstrap, system_open_application, system_open_url, computer_snapshot, and computer_action.
-        For browser navigation and search tasks, prefer system_open_url when the destination URL or query is already known.
+        Use system_open_url only for initial entry/navigation. Do not use URL/deeplink parameters to fill a form, compose an email, set recipients, set message text, submit, or verify a post-action state.
         """
 
     public static func bootstrapPayload(version: String, permissions: [String: JSONValue], availableTools: [String]) -> JSONValue {
@@ -113,7 +120,9 @@ public enum AriaControlPlane {
         Mandatory rules:
         - After aria_bootstrap, reset out of free-form Codex behavior and follow Aria's method for the whole visual task.
         - Call aria_bootstrap once at the beginning of each visual task.
-        - Use only the canonical Aria visual tools for the visual task: system_open_application or system_open_url for entry/navigation, computer_snapshot, and computer_action.
+        - Use only the canonical Aria visual tools for the visual task: system_open_application or system_open_url for initial entry/navigation, computer_snapshot, and computer_action.
+        - After the first computer_action, keep operating the visible app with computer_action; do not jump to deeplinks or URL-param shortcuts.
+        - Never use URL parameters or deeplinks to prefill visible fields, Gmail drafts, recipients, subjects, bodies, comments, messages, or forms.
         - Use computer_snapshot before the first UI action.
         - Use exactly one computer_action per cycle.
         - Inspect the returned screenshot before deciding again.
@@ -124,6 +133,7 @@ public enum AriaControlPlane {
         - DOM inspection for visually anchored tasks
         - Safari JavaScript automation as a substitute for visual verification
         - generic web search tools after Aria has taken control of the task
+        - deeplink/form-prefill URLs after Aria has taken control of the task
         - multiple UI actions in one tool call
         - stale coordinate guessing without a fresh screenshot
 
@@ -136,7 +146,7 @@ public enum AriaControlPlane {
 
         These require explicit user confirmation.
 
-        During a visual task, do not use auxiliary helpers such as window lists, focus helpers, clipboard helpers, file-dialog helpers, or reveal_path as a substitute for the computer loop.
+        During a visual task, do not use auxiliary helpers such as window lists, focus helpers, clipboard helpers, file-dialog helpers, reveal_path, or deeplink URL tricks as a substitute for the computer loop.
         """
     }
 
@@ -145,7 +155,7 @@ public enum AriaControlPlane {
         Aria Visual Workflow
 
         1. aria_bootstrap
-        2. system_open_application or system_open_url if entry is needed
+        2. system_open_application or system_open_url if initial entry is needed
         3. computer_snapshot
         4. computer_action with exactly one action
         5. inspect returned screenshot
@@ -155,14 +165,14 @@ public enum AriaControlPlane {
         Preferred action grammar:
         - click x/y
         - double_click x/y
-        - scroll delta_y
+        - scroll delta_y (positive = down, negative = up)
         - type text
         - key_press keys[]
         - wait seconds
         - move x/y
         - drag path[]
 
-        During a visual task, do not leave this workflow for auxiliary helpers. Stay in the loop.
+        During a visual task, do not leave this workflow for auxiliary helpers or URL/deeplink shortcuts. Stay in the loop.
         """
     }
 
@@ -192,10 +202,12 @@ public enum AriaControlPlane {
         Follow the Aria control loop:
         - Call aria_bootstrap first.
         - For visual tasks, do not use DOM inspection, browser JavaScript, generic web search tools, or out-of-band browsing once Aria has taken control.
-        - For visual tasks, use only system_open_application or system_open_url for entry/navigation, then computer_snapshot and computer_action. Do not switch to clipboard or window helper tools.
-        - For browser navigation and search where the destination or query is already known, prefer system_open_url over address-bar typing.
+        - For visual tasks, use only system_open_application or system_open_url for initial entry/navigation, then computer_snapshot and computer_action. Do not switch to clipboard or window helper tools.
+        - Use system_open_url only to enter the target site/app or an initial known URL. After the first computer_action, keep using visible click/type/scroll actions.
+        - Never use deeplinks or URL query parameters to fill visible fields. For Gmail/email/message/form tasks, click visible controls and type into visible fields instead of using URL params such as to, body, su, subject, message, text, content, or description.
         - Use computer_snapshot to observe the UI.
         - Use computer_action for exactly one UI action at a time.
+        - Use screenshot-image coordinates from the latest screenshot. Positive scroll delta_y scrolls down; negative scrolls up.
         - After every action, inspect the returned screenshot before deciding again.
         - Do not claim a draft, saved note, submitted form, sent email, or completed result unless the latest screenshot proves it.
         - Stop before irreversible actions unless the user explicitly asked for that exact action.
