@@ -153,11 +153,23 @@ enum AriaRuntimeCLI {
     private static func runPermissions(args: [String]) throws {
         switch args {
         case []:
-            try printResponse(RuntimeClient().send(method: .permissions))
+            try printResponse(sendRuntimeOrLocal(method: .permissions))
         case ["request"]:
-            try printResponse(RuntimeClient().send(method: .requestPermissions))
+            try printResponse(sendRuntimeOrLocal(method: .requestPermissions))
         default:
             throw RuntimeProtocolError.invalidParameters("Supported permissions commands: permissions, permissions request")
+        }
+    }
+
+    private static func sendRuntimeOrLocal(method: RuntimeMethod) throws -> RuntimeResponse {
+        do {
+            return try RuntimeClient().send(method: method)
+        } catch {
+            // Permission onboarding must still work before the daemon socket is
+            // reachable or when macOS temporarily blocks the installed helper.
+            // Falling back to a local service lets `aria permissions request`
+            // trigger the native macOS prompts directly from the CLI.
+            return MacOSRuntimeService().handle(RuntimeRequest(method: method))
         }
     }
 

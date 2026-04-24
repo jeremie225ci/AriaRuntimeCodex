@@ -232,6 +232,23 @@ Useful status check:
 aria setup status
 ```
 
+To start the macOS permission prompts and open the right Privacy & Security
+panes:
+
+```bash
+./scripts/request_permissions.sh
+```
+
+If you need to clear stale denials first:
+
+```bash
+./scripts/request_permissions.sh --reset
+```
+
+macOS still requires the user to manually enable **Accessibility** and
+**Screen Recording** for **Aria Runtime**; scripts can request and open the
+panes, but cannot click those toggles for the user.
+
 ## Smoke tests
 
 The CLI includes non-destructive smoke tests:
