@@ -74,5 +74,7 @@ final class AriaCodexProfileTests: XCTestCase {
         XCTAssertTrue(instructions.contains("For Gmail/email/message tasks"))
         XCTAssertTrue(instructions.contains("positive delta_y means scroll down"))
         XCTAssertTrue(instructions.contains("After the first computer_action"))
+        XCTAssertTrue(instructions.contains("behave like a human operator"))
+        XCTAssertTrue(instructions.contains("N concrete things"))
     }
 }

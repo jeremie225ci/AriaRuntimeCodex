@@ -21,6 +21,8 @@ public enum AriaControlPlane {
         "Execute exactly one UI action per computer_action call.",
         "Inspect the returned screenshot after every action before choosing the next action.",
         "Treat scroll and drag as successful only when the returned screenshot confirms a visual change.",
+        "For every UI task, behave like a human operator: if the current screen does not yet contain enough information or controls to finish, continue with the obvious visible action such as scrolling, clicking, typing, waiting, closing popups, opening details, or going back.",
+        "If the user asks for N concrete things, continue inspecting the visible UI until N concrete things are verified on screen or a visible blocker/error makes it impossible.",
         "computer_action coordinates are screenshot-image pixels with origin at the top-left of the returned screenshot.",
         "For scroll, positive delta_y means scroll down; negative delta_y means scroll up.",
         "Verify completion visually before claiming success.",
@@ -54,11 +56,14 @@ public enum AriaControlPlane {
         "If the task is happening in Safari, Chrome, Notes, Gmail, Finder, or another visible app, keep the task inside that app using Aria's canonical visual tools only.",
         "Do not use a non-Aria search result as proof that something exists on screen. Visible proof must still come from the returned screenshot.",
         "If the task starts in Safari or another browser, continue solving it inside that browser instead of jumping to a native search flow outside Aria.",
+        "A URL, result count, filter summary, menu state, loading state, or partial setup screen is not proof that the user's actual objective is complete; proof requires the requested final content or state to be visible.",
     ]
 
     public static let completionProofRules = [
         "Do not say DONE, saved, drafted, sent, submitted, or completed unless the latest returned screenshot proves it.",
         "For Notes, email drafts, forms, and written content, the final screenshot must visibly contain the drafted text or final state before you claim success.",
+        "For tasks asking to find, choose, compare, summarize, fill, create, edit, or verify concrete things, do not claim success until the latest screenshots show the actual requested content, items, or final state.",
+        "If the objective requires information or controls not currently visible, continue like a human with scroll, click, wait, close popup, open details, backtrack, or retry instead of stopping at a partial page.",
         "If the latest screenshot does not prove the result, continue the loop instead of inferring success from memory or from an earlier action.",
         "If computer-action summaries and the visible screenshot disagree, trust the screenshot.",
     ]
@@ -83,11 +88,13 @@ public enum AriaControlPlane {
         3. Call computer_snapshot.
         4. Choose exactly one computer_action.
         5. Inspect the returned screenshot before the next action.
-        6. Require explicit user confirmation before send, submit, delete, purchase, publish, or irreversible actions.
-        7. Do not claim completion unless the latest screenshot proves it.
+        6. If the objective is not visibly satisfied yet, continue like a human: scroll, click relevant visible controls, open details, close blockers, wait, backtrack, or retry.
+        7. Require explicit user confirmation before send, submit, delete, purchase, publish, or irreversible actions.
+        8. Do not claim completion unless the latest screenshot proves it.
 
         For visual tasks, do not use DOM inspection, Safari JavaScript from Apple Events, AppleScript UI scraping, generic web search tools, out-of-band browsing, clipboard extraction, or window inspection as the primary strategy once Aria has taken control. Aria's canonical visual tools are aria_bootstrap, system_open_application, system_open_url, computer_snapshot, and computer_action.
         Use system_open_url only for initial entry/navigation. Do not use URL/deeplink parameters to fill a form, compose an email, set recipients, set message text, submit, or verify a post-action state.
+        A URL, count, filter, focus change, or opened page is not completion unless it visibly contains the user's requested final content/state. Keep acting until the concrete objective is visible or visibly blocked.
         """
 
     public static func bootstrapPayload(version: String, permissions: [String: JSONValue], availableTools: [String]) -> JSONValue {
@@ -126,6 +133,7 @@ public enum AriaControlPlane {
         - Use computer_snapshot before the first UI action.
         - Use exactly one computer_action per cycle.
         - Inspect the returned screenshot before deciding again.
+        - For every task, keep acting like a human until the concrete requested outcome is visible; an intermediate page, URL, count, focus state, or setup state alone is not completion proof.
         - Verify the outcome visually before declaring completion.
         - Do not claim completion unless the latest screenshot proves it.
 
@@ -136,6 +144,7 @@ public enum AriaControlPlane {
         - deeplink/form-prefill URLs after Aria has taken control of the task
         - multiple UI actions in one tool call
         - stale coordinate guessing without a fresh screenshot
+        - stopping on an intermediate state without reaching the user's concrete visible objective
 
         Sensitive actions:
         - send
@@ -159,8 +168,9 @@ public enum AriaControlPlane {
         3. computer_snapshot
         4. computer_action with exactly one action
         5. inspect returned screenshot
-        6. repeat until visually verified
-        7. only then produce the final answer
+        6. if the objective is not visible yet, continue with human-like actions: scroll, click relevant controls, open details, wait, close blockers, backtrack, or retry
+        7. repeat until visually verified
+        8. only then produce the final answer
 
         Preferred action grammar:
         - click x/y
@@ -208,6 +218,8 @@ public enum AriaControlPlane {
         - Use computer_snapshot to observe the UI.
         - Use computer_action for exactly one UI action at a time.
         - Use screenshot-image coordinates from the latest screenshot. Positive scroll delta_y scrolls down; negative scrolls up.
+        - For every UI task, act like a human operator: if the current screen is only an intermediate step, keep going with scroll/click/type/wait/backtrack until the requested final content or state is visible.
+        - If the user asks for N concrete items/options/messages/files/results, continue until N concrete visible items with useful details are found, or say exactly what visible blocker prevents it.
         - After every action, inspect the returned screenshot before deciding again.
         - Do not claim a draft, saved note, submitted form, sent email, or completed result unless the latest screenshot proves it.
         - Stop before irreversible actions unless the user explicitly asked for that exact action.

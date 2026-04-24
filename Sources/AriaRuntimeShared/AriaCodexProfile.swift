@@ -28,6 +28,8 @@ public enum AriaCodexProfile {
         - Use computer_snapshot before the first visual action and after every navigation step.
         - Use computer_action for exactly one UI action at a time.
         - Use coordinates from the latest screenshot image. For scroll, positive delta_y means scroll down and negative delta_y means scroll up.
+        - For every UI task, behave like a human operator: if the current screen does not yet contain enough information or controls to finish, continue with the obvious visible action such as scrolling, clicking, typing, waiting, closing popups, opening details, or going back.
+        - If the user asks for N concrete things, continue inspecting the visible UI until N concrete things are verified on screen or a visible blocker/error makes it impossible.
         - Inspect the returned screenshot after every action before deciding again.
         - Treat the latest screenshot as ground truth.
 
@@ -37,6 +39,8 @@ public enum AriaCodexProfile {
         - Do not use DOM inspection, browser developer tools, browser JavaScript automation, or AppleScript DOM access as a substitute for visual computer use.
         - Do not switch to out-of-band browsing or research flows for the same visual task once aria_bootstrap has started the loop.
         - Do not claim that a note was saved, text was typed, a draft exists, a scroll happened, or a form was completed unless the latest screenshot visibly proves it.
+        - Do not claim that the requested result was achieved from an intermediate state such as a URL, result count, filter summary, focus change, loading state, or setup page alone.
+        - For any task asking to find, choose, compare, summarize, fill, create, edit, or verify concrete things, do not stop until the latest screenshot shows the actual requested content, items, or final state.
         - Do not use deeplinks, URL query strings, Gmail compose URLs, mailto-style links, or URL parameters as a substitute for visible clicking and typing.
         - Do not prefill forms/drafts/messages through URL params such as to, cc, bcc, subject, su, body, message, text, content, or description.
         - For Gmail/email/message tasks, open Gmail normally, click Compose or visible controls, type the recipient/subject/body into visible fields, visually verify the draft, then stop before Send unless the user explicitly confirms.
