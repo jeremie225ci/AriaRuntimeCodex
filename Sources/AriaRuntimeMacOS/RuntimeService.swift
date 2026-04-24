@@ -76,7 +76,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             ),
             ToolDescriptor(
                 name: "computer_action",
-                description: "The canonical Aria UI tool. Execute one UI action, or up to three tightly related UI actions via the actions array, using coordinates from the latest screenshot image. Aria captures one post-action screenshot to inspect before the next call. For scroll, positive delta_y scrolls down. Requires aria_bootstrap and a fresh computer_snapshot first. Do not leave the Aria loop or claim completion without screenshot proof.",
+                description: "The canonical Aria UI tool. Execute exactly one UI action using coordinates from the latest screenshot image, then receive the post-action screenshot to inspect before the next action. For scroll, positive delta_y scrolls down. Requires aria_bootstrap and a fresh computer_snapshot first. Do not leave the Aria loop or claim completion without screenshot proof.",
                 inputSchema: .object([
                     "type": .string("object"),
                     "properties": .object([
@@ -112,49 +112,9 @@ public final class MacOSRuntimeService: @unchecked Sendable {
                             ]),
                             "required": .array([.string("type")]),
                         ]),
-                        "actions": .object([
-                            "type": .string("array"),
-                            "minItems": .number(1),
-                            "maxItems": .number(3),
-                            "items": .object([
-                                "type": .string("object"),
-                                "properties": .object([
-                                    "type": .object([
-                                        "type": .string("string"),
-                                        "enum": .array(AriaControlPlane.allowedComputerActionTypes.map(JSONValue.string)),
-                                    ]),
-                                    "x": .object(["type": .string("number")]),
-                                    "y": .object(["type": .string("number")]),
-                                    "button": .object(["type": .string("string"), "enum": .array([.string("left"), .string("right")])]),
-                                    "delta_x": .object(["type": .string("number")]),
-                                    "delta_y": .object(["type": .string("number")]),
-                                    "text": .object(["type": .string("string")]),
-                                    "keys": .object([
-                                        "type": .string("array"),
-                                        "items": .object(["type": .string("string")]),
-                                    ]),
-                                    "seconds": .object(["type": .string("number")]),
-                                    "path": .object([
-                                        "type": .string("array"),
-                                        "items": .object([
-                                            "type": .string("object"),
-                                            "properties": .object([
-                                                "x": .object(["type": .string("number")]),
-                                                "y": .object(["type": .string("number")]),
-                                            ]),
-                                            "required": .array([.string("x"), .string("y")]),
-                                        ]),
-                                    ]),
-                                ]),
-                                "required": .array([.string("type")]),
-                            ]),
-                        ]),
                         "goal": .object(["type": .string("string")]),
                     ]),
-                    "anyOf": .array([
-                        .object(["required": .array([.string("action")])]),
-                        .object(["required": .array([.string("actions")])]),
-                    ]),
+                    "required": .array([.string("action")]),
                 ])
             ),
             ToolDescriptor(
@@ -425,7 +385,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         payload["non_aria_research_rules"] = .array(AriaControlPlane.nonAriaResearchRules.map(JSONValue.string))
         payload["sensitive_action_rules"] = .array(AriaControlPlane.sensitiveActionRules.map(JSONValue.string))
         payload["completion_proof_rules"] = .array(AriaControlPlane.completionProofRules.map(JSONValue.string))
-        payload["next_step"] = .string("Inspect the screenshot, then choose one computer_action call with up to three tightly related actions.")
+        payload["next_step"] = .string("Inspect the screenshot, then choose exactly one computer_action.")
         if let goal, !goal.isEmpty {
             payload["goal"] = .string(goal)
         }
@@ -433,20 +393,16 @@ public final class MacOSRuntimeService: @unchecked Sendable {
     }
 
     private func computerAction(arguments: [String: JSONValue]) throws -> JSONValue {
-        let actions = try computerActions(from: arguments)
-        let actionTypes = try actions.map { try requiredString($0, key: "type") }
+        let action = try requiredObject(arguments, key: "action")
+        let actionType = try requiredString(action, key: "type")
         let goal = arguments["goal"]?.stringValue
         let beforeFrame = try captureScreen()
-        var executedActions: [[String: JSONValue]] = []
-        for (index, action) in actions.enumerated() {
-            let executedAction = try executeComputerAction(action)
-            executedActions.append(executedAction)
-            settleAfterAction(actionTypes[index])
-        }
+        let executedAction = try executeComputerAction(action)
+        settleAfterAction(actionType)
         let afterFrame = try captureScreen()
         let verification = try verifyVisualOutcome(
-            actionTypes: actionTypes,
-            actions: actions,
+            actionType: actionType,
+            action: action,
             goal: goal,
             before: beforeFrame.image,
             after: afterFrame.image
@@ -456,10 +412,7 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         payload["locked_mode"] = .bool(true)
         payload["reset_rules"] = .array(AriaControlPlane.resetRules.map(JSONValue.string))
         payload["ok"] = .bool(verification.confirmed || !verification.required)
-        payload["executed_actions"] = .array(executedActions.map(JSONValue.object))
-        if executedActions.count == 1, let executedAction = executedActions.first {
-            payload["executed_action"] = .object(executedAction)
-        }
+        payload["executed_action"] = .object(executedAction)
         payload["visual_loop_rules"] = .array(AriaControlPlane.visualLoopRules.map(JSONValue.string))
         payload["forbidden_defaults"] = .array(AriaControlPlane.forbiddenDefaults.map(JSONValue.string))
         payload["non_aria_research_rules"] = .array(AriaControlPlane.nonAriaResearchRules.map(JSONValue.string))
@@ -478,28 +431,6 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             payload["next_step"] = .string("Inspect this returned screenshot before choosing the next action.")
         }
         return .object(payload)
-    }
-
-    private func computerActions(from arguments: [String: JSONValue]) throws -> [[String: JSONValue]] {
-        if let rawActions = arguments["actions"]?.arrayValue {
-            guard !rawActions.isEmpty else {
-                throw RuntimeProtocolError.invalidParameters("computer_action actions array cannot be empty")
-            }
-            guard rawActions.count <= 3 else {
-                throw RuntimeProtocolError.invalidParameters("computer_action supports at most 3 actions per call")
-            }
-            return try rawActions.enumerated().map { index, item in
-                guard let action = item.objectValue else {
-                    throw RuntimeProtocolError.invalidParameters("computer_action actions[\(index)] must be an object")
-                }
-                _ = try requiredString(action, key: "type")
-                return action
-            }
-        }
-
-        let action = try requiredObject(arguments, key: "action")
-        _ = try requiredString(action, key: "type")
-        return [action]
     }
 
     private func healthPayload() -> JSONValue {
@@ -780,73 +711,6 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         if microseconds > 0 {
             usleep(microseconds)
         }
-    }
-
-    private func verifyVisualOutcome(actionTypes: [String], actions: [[String: JSONValue]], goal: String?, before: CGImage, after: CGImage) throws -> VisualVerificationResult {
-        guard actionTypes.count == actions.count, !actionTypes.isEmpty else {
-            throw RuntimeProtocolError.invalidParameters("computer_action visual verification requires at least one executed action")
-        }
-
-        if actionTypes.count == 1, let actionType = actionTypes.first, let action = actions.first {
-            return try verifyVisualOutcome(
-                actionType: actionType,
-                action: action,
-                goal: goal,
-                before: before,
-                after: after
-            )
-        }
-
-        let batchActionType = "batch(\(actionTypes.joined(separator: ",")))"
-        var shouldRequireVisibleChange = false
-        var thresholdRatio = 0.0022
-        var thresholdDelta = 0.0012
-
-        for (actionType, action) in zip(actionTypes, actions) {
-            let requirement = verificationRequirement(for: actionType)
-            let required = requirement.requiredByDefault
-                || goalRequiresVisibleChange(actionType: actionType, action: action, goal: goal)
-            if required {
-                shouldRequireVisibleChange = true
-                if requirement.thresholdRatio > 0 {
-                    thresholdRatio = min(thresholdRatio, requirement.thresholdRatio)
-                }
-                if requirement.thresholdDelta > 0 {
-                    thresholdDelta = min(thresholdDelta, requirement.thresholdDelta)
-                }
-            }
-        }
-
-        if !shouldRequireVisibleChange {
-            return VisualVerificationResult(
-                actionType: batchActionType,
-                required: false,
-                changed: false,
-                confirmed: true,
-                changeRatio: 0,
-                averageDelta: 0,
-                thresholdRatio: thresholdRatio,
-                thresholdDelta: thresholdDelta,
-                reason: "No visible change is required for \(batchActionType).",
-            )
-        }
-
-        let metrics = try compareScreens(before: before, after: after)
-        let changed = metrics.changeRatio >= thresholdRatio || metrics.averageDelta >= thresholdDelta
-        let reason = changed
-            ? "Visible screen change confirmed after \(batchActionType)."
-            : "No meaningful visible screen change was detected after \(batchActionType)."
-        return VisualVerificationResult(
-            actionType: batchActionType,
-            required: true,
-            changed: changed,
-            confirmed: changed,
-            changeRatio: metrics.changeRatio,
-            averageDelta: metrics.averageDelta,
-            thresholdRatio: thresholdRatio,
-            thresholdDelta: thresholdDelta,
-            reason: reason,
-        )
     }
 
     private func verifyVisualOutcome(actionType: String, action: [String: JSONValue], goal: String?, before: CGImage, after: CGImage) throws -> VisualVerificationResult {

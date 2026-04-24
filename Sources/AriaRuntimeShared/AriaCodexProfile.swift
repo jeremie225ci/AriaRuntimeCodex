@@ -26,9 +26,9 @@ public enum AriaCodexProfile {
         - After aria_bootstrap, use only these Aria tools for the visual task: system_open_application or system_open_url for initial entry/navigation, then computer_snapshot and computer_action.
         - Use system_open_url only to enter the target app/site or initial known URL. After the first computer_action, keep operating the visible UI with computer_action.
         - Use computer_snapshot before the first visual action and after every navigation step.
-        - Use computer_action for one to three tightly related UI actions at a time.
+        - Use computer_action for exactly one UI action at a time.
         - Use coordinates from the latest screenshot image. For scroll, positive delta_y means scroll down and negative delta_y means scroll up.
-        - Inspect the returned screenshot after every computer_action call before deciding again.
+        - Inspect the returned screenshot after every action before deciding again.
         - Treat the latest screenshot as ground truth.
 
         Forbidden behavior for visual tasks:

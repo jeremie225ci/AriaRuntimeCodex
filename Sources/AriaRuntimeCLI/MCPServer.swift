@@ -358,7 +358,7 @@ final class MCPServer {
             }
             return nil
         case "desktop_list_windows", "desktop_focus_application", "desktop_focus_window", "read_clipboard", "read_clipboard_image", "copy_to_clipboard", "paste", "select_file_for_active_dialog", "upload_file_to_active_app", "reveal_path":
-            return "This tool is not allowed inside Aria's locked visual loop. Use system_open_application or system_open_url to enter, then use computer_snapshot and computer_action with up to three tightly related actions per call."
+            return "This tool is not allowed inside Aria's locked visual loop. Use system_open_application or system_open_url to enter, then use computer_snapshot and computer_action one step at a time."
         default:
             return nil
         }

@@ -627,28 +627,6 @@ enum SmokeRunner {
             let waitActionStructured = try requireStructuredContent(waitActionCall, context: "tools/call computer_action wait")
             try require(waitActionStructured["visual_confirmation"]?.objectValue != nil, "computer_action wait returned visual verification metadata")
             pass("MCP computer_action returned visual verification metadata")
-
-            let batchActionCall = try client.request(
-                method: "tools/call",
-                params: .object([
-                    "name": .string("computer_action"),
-                    "arguments": .object([
-                        "actions": .array([
-                            .object([
-                                "type": .string("wait"),
-                                "seconds": .number(0.05),
-                            ]),
-                            .object([
-                                "type": .string("wait"),
-                                "seconds": .number(0.05),
-                            ]),
-                        ]),
-                    ]),
-                ])
-            )
-            let batchActionStructured = try requireStructuredContent(batchActionCall, context: "tools/call computer_action batch")
-            try require(batchActionStructured["executed_actions"]?.arrayValue?.count == 2, "computer_action accepted a batch of actions")
-            pass("MCP computer_action accepted a batch of actions")
         } else {
             skip("MCP computer_snapshot skipped because Screen Recording permission is not granted")
         }
