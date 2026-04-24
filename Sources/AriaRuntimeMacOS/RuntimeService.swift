@@ -151,7 +151,10 @@ public final class MacOSRuntimeService: @unchecked Sendable {
                         ]),
                         "goal": .object(["type": .string("string")]),
                     ]),
-                    "additionalProperties": .bool(false),
+                    "anyOf": .array([
+                        .object(["required": .array([.string("action")])]),
+                        .object(["required": .array([.string("actions")])]),
+                    ]),
                 ])
             ),
             ToolDescriptor(
