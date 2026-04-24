@@ -140,7 +140,7 @@ That maps well to this repository's direction:
 
 - Aria should stay focused on **desktop execution**
 - Codex should remain the **planner**
-- visual tasks should be based on **screenshots and one action at a time**
+- visual tasks should be based on **screenshots and small action batches** of up to three tightly related actions
 - permissions should be explicit and user-controlled
 
 Also important: the public OpenAI Codex repository confirms that **Codex CLI runs locally on your computer**, while Codex Web is the cloud-based agent. This repository is intentionally aligned with the **local** model, not the hosted one.

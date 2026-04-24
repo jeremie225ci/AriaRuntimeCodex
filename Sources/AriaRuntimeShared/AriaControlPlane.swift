@@ -18,8 +18,8 @@ public enum AriaControlPlane {
         "Once the visual loop has started, do not switch to clipboard helpers, window-inspection helpers, DOM helpers, or out-of-band research as a substitute for computer use.",
         "For the initial browser navigation or search only, system_open_url is acceptable when the destination URL or search page is already known.",
         "Capture the screen with computer_snapshot before the first UI action.",
-        "Execute exactly one UI action per computer_action call.",
-        "Inspect the returned screenshot after every action before choosing the next action.",
+        "Execute up to three tightly related UI actions per computer_action call by using the actions array when it saves unnecessary screenshots.",
+        "Inspect the returned screenshot after every computer_action call before choosing the next call.",
         "Treat scroll and drag as successful only when the returned screenshot confirms a visual change.",
         "computer_action coordinates are screenshot-image pixels with origin at the top-left of the returned screenshot.",
         "For scroll, positive delta_y means scroll down; negative delta_y means scroll up.",
@@ -36,7 +36,7 @@ public enum AriaControlPlane {
         "Do not use DOM inspection, browser JavaScript, or AppleScript DOM access for visual tasks.",
         "Do not use deeplinks or URL query strings as a substitute for clicking and typing in the visible UI.",
         "Do not use mail.google.com compose URLs, mailto-style URLs, or URL parameters such as to, cc, bcc, subject, su, body, message, text, content, or description to draft or send messages.",
-        "Do not chain multiple UI actions into one call.",
+        "Do not chain more than three UI actions into one call.",
         "Do not guess stale coordinates without a fresh screenshot.",
         "Do not claim a button was clicked or a form was submitted without post-action confirmation.",
         "Do not treat clipboard contents as proof of page contents unless the latest screenshot proves that the copied selection is the relevant on-screen content.",
@@ -81,7 +81,7 @@ public enum AriaControlPlane {
         1. Call aria_bootstrap once.
         2. Enter the app or URL if needed.
         3. Call computer_snapshot.
-        4. Choose exactly one computer_action.
+        4. Choose one computer_action call, with up to three tightly related low-level actions when useful.
         5. Inspect the returned screenshot before the next action.
         6. Require explicit user confirmation before send, submit, delete, purchase, publish, or irreversible actions.
         7. Do not claim completion unless the latest screenshot proves it.
@@ -124,7 +124,7 @@ public enum AriaControlPlane {
         - After the first computer_action, keep operating the visible app with computer_action; do not jump to deeplinks or URL-param shortcuts.
         - Never use URL parameters or deeplinks to prefill visible fields, Gmail drafts, recipients, subjects, bodies, comments, messages, or forms.
         - Use computer_snapshot before the first UI action.
-        - Use exactly one computer_action per cycle.
+        - Use exactly one computer_action call per cycle, containing at most three tightly related low-level actions.
         - Inspect the returned screenshot before deciding again.
         - Verify the outcome visually before declaring completion.
         - Do not claim completion unless the latest screenshot proves it.
@@ -134,7 +134,7 @@ public enum AriaControlPlane {
         - Safari JavaScript automation as a substitute for visual verification
         - generic web search tools after Aria has taken control of the task
         - deeplink/form-prefill URLs after Aria has taken control of the task
-        - multiple UI actions in one tool call
+        - more than three UI actions in one tool call
         - stale coordinate guessing without a fresh screenshot
 
         Sensitive actions:
@@ -157,7 +157,7 @@ public enum AriaControlPlane {
         1. aria_bootstrap
         2. system_open_application or system_open_url if initial entry is needed
         3. computer_snapshot
-        4. computer_action with exactly one action
+        4. computer_action with one to three tightly related actions
         5. inspect returned screenshot
         6. repeat until visually verified
         7. only then produce the final answer
@@ -206,7 +206,7 @@ public enum AriaControlPlane {
         - Use system_open_url only to enter the target site/app or an initial known URL. After the first computer_action, keep using visible click/type/scroll actions.
         - Never use deeplinks or URL query parameters to fill visible fields. For Gmail/email/message/form tasks, click visible controls and type into visible fields instead of using URL params such as to, body, su, subject, message, text, content, or description.
         - Use computer_snapshot to observe the UI.
-        - Use computer_action for exactly one UI action at a time.
+        - Use computer_action for one to three tightly related UI actions at a time.
         - Use screenshot-image coordinates from the latest screenshot. Positive scroll delta_y scrolls down; negative scrolls up.
         - After every action, inspect the returned screenshot before deciding again.
         - Do not claim a draft, saved note, submitted form, sent email, or completed result unless the latest screenshot proves it.
@@ -216,7 +216,7 @@ public enum AriaControlPlane {
 
     public static func setupTestPrompt() -> String {
         """
-        Use aria-runtime for this visual task. Open Safari, call aria_bootstrap exactly once, then use computer_snapshot and computer_action one step at a time to go to ycombinator.com, scroll twice, and report only what the latest screenshot proves.
+        Use aria-runtime for this visual task. Open Safari, call aria_bootstrap exactly once, then use computer_snapshot and computer_action with up to three tightly related actions per call to go to ycombinator.com, scroll twice, and report only what the latest screenshot proves.
         """
     }
 }
