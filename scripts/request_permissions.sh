@@ -121,22 +121,78 @@ open "${APP_PATH}"
 
 sleep 1
 
-echo "Requesting Accessibility and Screen Recording prompts..."
-if [[ -x "${CLI_PATH}" ]]; then
-  "${CLI_PATH}" permissions request >/dev/null 2>&1 || true
+request_permissions() {
+  if [[ -x "${CLI_PATH}" ]]; then
+    "${CLI_PATH}" permissions request >/dev/null 2>&1 || true
+  fi
+}
+
+permission_status() {
+  if [[ -x "${CLI_PATH}" ]]; then
+    "${CLI_PATH}" setup status 2>/dev/null || true
+  fi
+}
+
+has_accessibility() {
+  [[ "$(permission_status)" == *'"accessibility_trusted" : true'* ]]
+}
+
+has_screen_recording() {
+  [[ "$(permission_status)" == *'"screen_recording_trusted" : true'* ]]
+}
+
+wait_until_accessibility_ready() {
+  local seconds="$1"
+  local deadline=$((SECONDS + seconds))
+  while (( SECONDS < deadline )); do
+    if has_accessibility; then
+      echo ""
+      echo "✅ Accessibility is enabled."
+      return 0
+    fi
+    request_permissions
+    printf '.'
+    sleep 3
+  done
+  echo ""
+  return 1
+}
+
+echo "Requesting Accessibility prompt first..."
+request_permissions
+if ! has_accessibility; then
+  open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility" || true
+  cat <<'EOF'
+
+ACTION REQUIRED NOW:
+  In Accessibility, enable "Aria Runtime".
+
+macOS often shows only one privacy prompt at a time. The script will ask for
+Screen Recording after Accessibility is accepted.
+EOF
+  wait_until_accessibility_ready "$(( WAIT_SECONDS < 90 ? WAIT_SECONDS : 90 ))" || true
 fi
 
-echo "Opening macOS Privacy & Security panes..."
-open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility" || true
+echo ""
+echo "Requesting Screen Recording prompt..."
+# Reopen the app and request again after Accessibility, otherwise macOS can
+# suppress the Screen Recording prompt while the Accessibility prompt is active.
+open "${APP_PATH}" || true
 sleep 1
+request_permissions
+sleep 1
+request_permissions
+
+echo "Opening Screen Recording privacy pane..."
 open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture" || true
 
 cat <<'EOF'
 
 ACTION REQUIRED:
-  1. In Accessibility, enable "Aria Runtime".
-  2. In Screen Recording, enable "Aria Runtime".
-  3. If macOS asks to quit/reopen Aria Runtime, accept.
+  1. In Screen Recording, enable "Aria Runtime".
+  2. If macOS asks to quit/reopen Aria Runtime, accept.
+  3. If no popup appears, use the open Screen Recording pane and toggle
+     "Aria Runtime" manually.
 
 This cannot be auto-approved by a script; Apple requires the user click the toggles.
 
@@ -145,10 +201,7 @@ EOF
 
 deadline=$((SECONDS + WAIT_SECONDS))
 while (( SECONDS < deadline )); do
-  status=""
-  if [[ -x "${CLI_PATH}" ]]; then
-    status="$("${CLI_PATH}" setup status 2>/dev/null || true)"
-  fi
+  status="$(permission_status)"
 
   if [[ "${status}" == *'"accessibility_trusted" : true'* ]] \
     && [[ "${status}" == *'"screen_recording_trusted" : true'* ]]; then
@@ -161,6 +214,9 @@ while (( SECONDS < deadline )); do
     exit 0
   fi
 
+  if [[ "${status}" != *'"screen_recording_trusted" : true'* ]]; then
+    request_permissions
+  fi
   printf '.'
   sleep 3
 done

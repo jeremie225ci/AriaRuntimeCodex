@@ -22,9 +22,11 @@
 	<string>13.0</string>
 	<key>LSUIElement</key>
 	<true/>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>Aria Runtime uses Apple Events only to help Codex interact with local apps you explicitly authorize.</string>
-	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © GetAriaOS</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Aria Runtime uses Apple Events only to help Codex interact with local apps you explicitly authorize.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Aria Runtime needs Screen Recording permission so Codex can inspect screenshots and verify visible UI actions.</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © GetAriaOS</string>
 </dict>
 </plist>
