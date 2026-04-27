@@ -34,12 +34,26 @@ private final class AriaSessionState {
     }
 
     func registerBootstrap(task: String?) {
-        bootstrapCount += 1
+        bootstrapCount = 1
         snapshotCount = 0
         actionCount = 0
         screenObservationReady = false
         activeTask = task?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         lastTool = "aria_bootstrap"
+    }
+
+    func isDifferentTask(_ task: String?) -> Bool {
+        let current = Self.normalizedTask(activeTask)
+        let next = Self.normalizedTask(task ?? "")
+        return !current.isEmpty && !next.isEmpty && current != next
+    }
+
+    private static func normalizedTask(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 
     func markNavigation(tool: String) {
@@ -305,7 +319,10 @@ final class MCPServer {
 
     private func policyViolation(toolName: String, arguments: [String: JSONValue]) -> String? {
         if toolName == "aria_bootstrap", sessionState.bootstrapCount > 0 {
-            return "aria_bootstrap must be called exactly once per visual task. Continue from the latest screenshot with computer_snapshot/computer_action instead of resetting the loop."
+            if sessionState.isDifferentTask(arguments["task"]?.stringValue) {
+                return nil
+            }
+            return "aria_bootstrap must be called exactly once per visual task. Continue from the latest screenshot with computer_snapshot/computer_action instead of resetting the loop. For a new user task, call aria_bootstrap with the new task description so Aria can reset the visual loop."
         }
 
         if sessionState.bootstrapCount > 0 {

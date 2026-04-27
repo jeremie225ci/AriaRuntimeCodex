@@ -9,6 +9,12 @@ private struct CapturedScreen {
     let pngData: Data
 }
 
+private struct ScrollDispatchResult {
+    let units: String
+    let verticalTicks: Int
+    let horizontalTicks: Int
+}
+
 private struct VisualVerificationResult {
     let actionType: String
     let required: Bool
@@ -579,12 +585,15 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             let displayPoint = screenshotCoordinateToDisplayPoint(x: x, y: y)
             try ensureAccessibility()
             try click(at: displayPoint, button: button, clickCount: 1)
+            let cursor = currentMouseLocation()
             return [
                 "type": .string(actionType),
                 "x": .number(x),
                 "y": .number(y),
                 "display_x": .number(displayPoint.x),
                 "display_y": .number(displayPoint.y),
+                "cursor_x": .number(Double(cursor?.x ?? displayPoint.x)),
+                "cursor_y": .number(Double(cursor?.y ?? displayPoint.y)),
                 "button": .string(button),
             ]
         case "double_click":
@@ -593,12 +602,15 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             let displayPoint = screenshotCoordinateToDisplayPoint(x: x, y: y)
             try ensureAccessibility()
             try click(at: displayPoint, button: "left", clickCount: 2)
+            let cursor = currentMouseLocation()
             return [
                 "type": .string(actionType),
                 "x": .number(x),
                 "y": .number(y),
                 "display_x": .number(displayPoint.x),
                 "display_y": .number(displayPoint.y),
+                "cursor_x": .number(Double(cursor?.x ?? displayPoint.x)),
+                "cursor_y": .number(Double(cursor?.y ?? displayPoint.y)),
             ]
         case "scroll":
             let hasDeltaX = action["delta_x"]?.doubleValue != nil
@@ -606,15 +618,26 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             let deltaX = action["delta_x"]?.doubleValue ?? 0
             let deltaY = hasDeltaY ? (action["delta_y"]?.doubleValue ?? 0) : (hasDeltaX ? 0 : 620)
             try ensureAccessibility()
+            let scrollPoint: CGPoint
             if let x = action["x"]?.doubleValue, let y = action["y"]?.doubleValue {
-                try moveMouse(to: screenshotCoordinateToDisplayPoint(x: x, y: y))
-                usleep(60_000)
+                scrollPoint = screenshotCoordinateToDisplayPoint(x: x, y: y)
+            } else {
+                scrollPoint = defaultScrollPoint()
             }
-            try scroll(deltaX: Int32(deltaX.rounded()), deltaY: Int32(deltaY.rounded()))
+            try moveMouse(to: scrollPoint)
+            let scrollDispatch = try scroll(deltaX: Int32(deltaX.rounded()), deltaY: Int32(deltaY.rounded()))
+            let cursor = currentMouseLocation()
             return [
                 "type": .string(actionType),
                 "delta_x": .number(deltaX),
                 "delta_y": .number(deltaY),
+                "display_x": .number(scrollPoint.x),
+                "display_y": .number(scrollPoint.y),
+                "cursor_x": .number(Double(cursor?.x ?? scrollPoint.x)),
+                "cursor_y": .number(Double(cursor?.y ?? scrollPoint.y)),
+                "scroll_units": .string(scrollDispatch.units),
+                "vertical_wheel_ticks": .number(Double(scrollDispatch.verticalTicks)),
+                "horizontal_wheel_ticks": .number(Double(scrollDispatch.horizontalTicks)),
             ]
         case "type":
             let text = try requiredString(action, key: "text")
@@ -647,12 +670,15 @@ public final class MacOSRuntimeService: @unchecked Sendable {
             let displayPoint = screenshotCoordinateToDisplayPoint(x: x, y: y)
             try ensureAccessibility()
             try moveMouse(to: displayPoint)
+            let cursor = currentMouseLocation()
             return [
                 "type": .string(actionType),
                 "x": .number(x),
                 "y": .number(y),
                 "display_x": .number(displayPoint.x),
                 "display_y": .number(displayPoint.y),
+                "cursor_x": .number(Double(cursor?.x ?? displayPoint.x)),
+                "cursor_y": .number(Double(cursor?.y ?? displayPoint.y)),
             ]
         case "drag":
             guard let path = action["path"]?.arrayValue, !path.isEmpty else {
@@ -929,52 +955,75 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         let mouseButton: CGMouseButton = button.lowercased() == "right" ? .right : .left
         let downType: CGEventType = mouseButton == .right ? .rightMouseDown : .leftMouseDown
         let upType: CGEventType = mouseButton == .right ? .rightMouseUp : .leftMouseUp
+        let source = try mouseEventSource()
 
         try moveMouse(to: point, button: mouseButton)
 
         for index in 1...clickCount {
             guard
-                let down = CGEvent(mouseEventSource: nil, mouseType: downType, mouseCursorPosition: point, mouseButton: mouseButton),
-                let up = CGEvent(mouseEventSource: nil, mouseType: upType, mouseCursorPosition: point, mouseButton: mouseButton)
+                let down = CGEvent(mouseEventSource: source, mouseType: downType, mouseCursorPosition: point, mouseButton: mouseButton),
+                let up = CGEvent(mouseEventSource: source, mouseType: upType, mouseCursorPosition: point, mouseButton: mouseButton)
             else {
                 throw RuntimeProtocolError.runtimeFailure("Unable to construct mouse click event.")
             }
             down.setIntegerValueField(.mouseEventClickState, value: Int64(index))
             up.setIntegerValueField(.mouseEventClickState, value: Int64(index))
+            down.flags = []
+            up.flags = []
             down.post(tap: .cghidEventTap)
+            usleep(45_000)
             up.post(tap: .cghidEventTap)
             usleep(80_000)
         }
     }
 
-    private func moveMouse(to point: CGPoint, button: CGMouseButton = .left) throws {
-        guard let move = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: button) else {
+    @discardableResult
+    private func moveMouse(to point: CGPoint, button: CGMouseButton = .left) throws -> CGPoint {
+        let source = try mouseEventSource()
+        guard let move = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: button) else {
             throw RuntimeProtocolError.runtimeFailure("Unable to construct mouse move event.")
         }
+        move.flags = []
         move.post(tap: .cghidEventTap)
+        usleep(80_000)
+
+        guard let actual = currentMouseLocation() else {
+            return point
+        }
+        let distance = hypot(actual.x - point.x, actual.y - point.y)
+        guard distance <= 12 else {
+            throw RuntimeProtocolError.runtimeFailure(
+                "Mouse move did not reach the requested point (target \(Int(point.x)),\(Int(point.y)); actual \(Int(actual.x)),\(Int(actual.y))). Check Accessibility permission for Aria Runtime."
+            )
+        }
+        return actual
     }
 
     private func drag(along points: [CGPoint]) throws {
         guard let first = points.first else {
             throw RuntimeProtocolError.invalidParameters("Drag path cannot be empty.")
         }
+        let source = try mouseEventSource()
         try moveMouse(to: first)
-        guard let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: first, mouseButton: .left) else {
+        guard let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: first, mouseButton: .left) else {
             throw RuntimeProtocolError.runtimeFailure("Unable to construct drag mouse down event.")
         }
+        down.flags = []
         down.post(tap: .cghidEventTap)
         usleep(50_000)
         for point in points.dropFirst() {
-            guard let drag = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) else {
+            guard let drag = CGEvent(mouseEventSource: source, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left) else {
                 throw RuntimeProtocolError.runtimeFailure("Unable to construct drag move event.")
             }
+            drag.flags = []
             drag.post(tap: .cghidEventTap)
             usleep(30_000)
         }
         let endPoint = points.last ?? first
-        guard let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: endPoint, mouseButton: .left) else {
+        guard let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: endPoint, mouseButton: .left) else {
             throw RuntimeProtocolError.runtimeFailure("Unable to construct drag mouse up event.")
         }
+        up.flags = []
         up.post(tap: .cghidEventTap)
     }
 
@@ -1013,21 +1062,73 @@ public final class MacOSRuntimeService: @unchecked Sendable {
         up.post(tap: .cghidEventTap)
     }
 
-    private func scroll(deltaX: Int32, deltaY: Int32) throws {
+    private func scroll(deltaX: Int32, deltaY: Int32) throws -> ScrollDispatchResult {
         // Codex computer-use deltas use the human/screenshot convention:
-        // positive Y means "scroll down". CGEvent wheel deltas use the opposite
-        // sign on macOS, so invert here to keep the public MCP contract stable.
-        guard let event = CGEvent(
-            scrollWheelEvent2Source: nil,
-            units: .pixel,
-            wheelCount: 2,
-            wheel1: -deltaY,
-            wheel2: -deltaX,
-            wheel3: 0
-        ) else {
-            throw RuntimeProtocolError.runtimeFailure("Unable to construct scroll event.")
+        // positive Y means "scroll down". macOS wheel events use the opposite
+        // sign, so invert here. We send repeated line-wheel ticks rather than a
+        // single pixel delta because Safari and many native apps treat physical
+        // mouse-wheel ticks more reliably than synthetic pixel-scroll bursts.
+        let verticalTicks = wheelTickCount(for: deltaY)
+        let horizontalTicks = wheelTickCount(for: deltaX)
+        let verticalDirection: Int32 = deltaY >= 0 ? -1 : 1
+        let horizontalDirection: Int32 = deltaX >= 0 ? -1 : 1
+        let eventCount = max(verticalTicks, horizontalTicks, 1)
+        let source = try mouseEventSource()
+
+        for index in 0..<eventCount {
+            let verticalWheel = index < verticalTicks ? verticalDirection : 0
+            let horizontalWheel = index < horizontalTicks ? horizontalDirection : 0
+            guard let event = CGEvent(
+                scrollWheelEvent2Source: source,
+                units: .line,
+                wheelCount: 2,
+                wheel1: verticalWheel,
+                wheel2: horizontalWheel,
+                wheel3: 0
+            ) else {
+                throw RuntimeProtocolError.runtimeFailure("Unable to construct scroll event.")
+            }
+            event.flags = []
+            event.post(tap: .cghidEventTap)
+            usleep(28_000)
         }
-        event.post(tap: .cghidEventTap)
+
+        return ScrollDispatchResult(
+            units: "line_ticks",
+            verticalTicks: verticalTicks,
+            horizontalTicks: horizontalTicks
+        )
+    }
+
+    private func wheelTickCount(for delta: Int32) -> Int {
+        let magnitude = abs(Int(delta))
+        guard magnitude > 0 else {
+            return 0
+        }
+        return max(1, min(12, Int(ceil(Double(magnitude) / 120.0))))
+    }
+
+    private func defaultScrollPoint() -> CGPoint {
+        let bounds = CGDisplayBounds(CGMainDisplayID())
+        guard bounds.width > 0, bounds.height > 0 else {
+            return CGPoint(x: 0, y: 0)
+        }
+        return CGPoint(
+            x: bounds.midX,
+            y: bounds.minY + (bounds.height * 0.58)
+        )
+    }
+
+    private func mouseEventSource() throws -> CGEventSource {
+        guard let source = CGEventSource(stateID: .hidSystemState) ?? CGEventSource(stateID: .combinedSessionState) else {
+            throw RuntimeProtocolError.runtimeFailure("Unable to create mouse event source.")
+        }
+        source.localEventsSuppressionInterval = 0
+        return source
+    }
+
+    private func currentMouseLocation() -> CGPoint? {
+        CGEvent(source: nil)?.location
     }
 
     private func listWindows() -> JSONValue {

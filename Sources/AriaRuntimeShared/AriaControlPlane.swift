@@ -21,6 +21,7 @@ public enum AriaControlPlane {
         "Execute exactly one UI action per computer_action call.",
         "Inspect the returned screenshot after every action before choosing the next action.",
         "Treat scroll and drag as successful only when the returned screenshot confirms a visual change.",
+        "Do not replace mouse work with a keyboard-only loop: when the visible UI requires scrolling or clicking, use scroll/click actions, then retry with adjusted coordinates if the screenshot shows no effect.",
         "For every UI task, behave like a human operator: if the current screen does not yet contain enough information or controls to finish, continue with the obvious visible action such as scrolling, clicking, typing, waiting, closing popups, opening details, or going back.",
         "If the user asks for N concrete things, continue inspecting the visible UI until N concrete things are verified on screen or a visible blocker/error makes it impossible.",
         "computer_action coordinates are screenshot-image pixels with origin at the top-left of the returned screenshot.",
@@ -40,6 +41,7 @@ public enum AriaControlPlane {
         "Do not use mail.google.com compose URLs, mailto-style URLs, or URL parameters such as to, cc, bcc, subject, su, body, message, text, content, or description to draft or send messages.",
         "Do not chain multiple UI actions into one call.",
         "Do not guess stale coordinates without a fresh screenshot.",
+        "Do not use repeated Tab/Enter or address-bar retries as a substitute for scrolling and clicking visible content.",
         "Do not claim a button was clicked or a form was submitted without post-action confirmation.",
         "Do not treat clipboard contents as proof of page contents unless the latest screenshot proves that the copied selection is the relevant on-screen content.",
         "Do not use window lists, focus helpers, clipboard helpers, or reveal_path to replace computer use during a visual task.",
@@ -218,6 +220,7 @@ public enum AriaControlPlane {
         - Use computer_snapshot to observe the UI.
         - Use computer_action for exactly one UI action at a time.
         - Use screenshot-image coordinates from the latest screenshot. Positive scroll delta_y scrolls down; negative scrolls up.
+        - If the visible UI requires mouse work, use scroll/click actions instead of falling back to a keyboard-only loop; retry with adjusted coordinates when the screenshot shows no effect.
         - For every UI task, act like a human operator: if the current screen is only an intermediate step, keep going with scroll/click/type/wait/backtrack until the requested final content or state is visible.
         - If the user asks for N concrete items/options/messages/files/results, continue until N concrete visible items with useful details are found, or say exactly what visible blocker prevents it.
         - After every action, inspect the returned screenshot before deciding again.

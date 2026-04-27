@@ -76,5 +76,6 @@ final class AriaCodexProfileTests: XCTestCase {
         XCTAssertTrue(instructions.contains("After the first computer_action"))
         XCTAssertTrue(instructions.contains("behave like a human operator"))
         XCTAssertTrue(instructions.contains("N concrete things"))
+        XCTAssertTrue(instructions.contains("keyboard-only loop"))
     }
 }

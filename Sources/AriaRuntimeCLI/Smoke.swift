@@ -533,7 +533,9 @@ enum SmokeRunner {
             method: "tools/call",
             params: .object([
                 "name": .string("aria_bootstrap"),
-                "arguments": .object([:]),
+                "arguments": .object([
+                    "task": .string("Smoke visual task"),
+                ]),
             ])
         )
         let bootstrapStructured = try requireStructuredContent(bootstrapCall, context: "tools/call aria_bootstrap")
@@ -555,6 +557,20 @@ enum SmokeRunner {
         let repeatedBootstrapStructured = try requireToolError(repeatedBootstrap, context: "tools/call repeated aria_bootstrap")
         try require(repeatedBootstrapStructured["error"]?["code"]?.stringValue == "aria_policy_violation", "repeated aria_bootstrap is rejected by Aria policy")
         pass("MCP policy blocks repeated aria_bootstrap")
+
+        let newTaskBootstrap = try client.request(
+            method: "tools/call",
+            params: .object([
+                "name": .string("aria_bootstrap"),
+                "arguments": .object([
+                    "task": .string("Start a different visual task"),
+                ]),
+            ])
+        )
+        let newTaskBootstrapStructured = try requireStructuredContent(newTaskBootstrap, context: "tools/call aria_bootstrap for a different task")
+        try require(newTaskBootstrapStructured["session"]?["bootstrap_count"]?.intValue == 1, "aria_bootstrap resets session state for a different visual task")
+        try require(newTaskBootstrapStructured["session"]?["active_task"]?.stringValue == "Start a different visual task", "aria_bootstrap stores the new active visual task")
+        pass("MCP aria_bootstrap resets for a different visual task")
 
         let blockedDeepLink = try client.request(
             method: "tools/call",
